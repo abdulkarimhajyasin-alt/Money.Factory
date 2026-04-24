@@ -1,0 +1,6 @@
+.env
+__pycache__/
+*.pyc
+data.json
+users.json
+chat_ids.json
