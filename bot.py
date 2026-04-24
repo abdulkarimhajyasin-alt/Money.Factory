@@ -1448,7 +1448,7 @@ def main_menu_keyboard():
         ["الباقة الذهبية", "الباقة الفضية"],
         ["باقة VIP"],
         ["باقتي", "💸 سحب الأرباح"],
-        ["🏦 سحب رأس المال وإيقاف الربح"],
+        ["🏦 سحب رأس المال وإيقاف الربح", "🪪 توثيق الحساب"],
         ["📜 سجل العمليات", "🔐 تغيير كلمة المرور"],
         ["🗑 حذف حسابي", "📩 مراسلة الدعم"],
         ["🚪 تسجيل خروج"]
@@ -2536,34 +2536,52 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
       return
 
     elif isinstance(user_states.get(user_id), dict) and user_states[user_id].get("step") == "register_password":
-      username = user_states[user_id]["username"]
-      password = text.strip()
-      residence = user_states[user_id]["residence"]
-      full_name = user_states[user_id]["full_name"]
+       username = user_states[user_id]["username"]
+       password = text.strip()
 
-      if username in users:
-          await update.message.reply_text("اسم المستخدم موجود مسبقًا ❌")
-          return
+       if username in users:
+           await update.message.reply_text("اسم المستخدم موجود مسبقًا ❌")
+           return
 
-      for req in pending_verification_requests.values():
-          if req.get("username") == username:
-              await update.message.reply_text("اسم المستخدم محجوز ضمن طلب توثيق قيد المراجعة ❌")
-              return
+       if len(password) < 3:
+           await update.message.reply_text("❌ كلمة المرور قصيرة جدًا، اجعلها 3 أحرف أو أكثر")
+           return
 
-      if len(password) < 3:
-          await update.message.reply_text("❌ كلمة المرور قصيرة جدًا، اجعلها 3 أحرف أو أكثر")
-          return
+       users[username] = password
+       user_telegram_ids[username] = user_id
+       user_plans[username] = "NONE"
+       user_balance[username] = 0
+       transactions[username] = []
+       user_withdraw_logs[username] = []
+       user_deposit_logs[username] = []
+       user_deposits[username] = 0
+       user_last_profit[username] = time.time()
+       user_statuses[username] = "active"
+       verified_users[username] = False
+       user_created_time[username] = time.time()
 
-      user_states[user_id] = {
-          "step": "register_id_front",
-          "username": username,
-          "password": password,
-          "residence": residence,
-          "full_name": full_name
-      }
+       referral_value = REFERRAL_DATA.get(user_id, "غير محدد")
+       if referral_value not in ["غير محدد", "بدون دعوة", "", None]:
+           referrer_username = referral_value.strip()
+           if referrer_username in users and referrer_username != username:
+               user_referrer[username] = referrer_username
 
-      await update.message.reply_text("قم الآن برفع صورة واضحة للوجه الأمامي للهوية الشخصية:")
-      return
+       referral_bonus_paid[username] = False
+
+       save_users()
+       save_data()
+
+       user_states.pop(user_id, None)
+
+       await update.message.reply_text(
+           "✅ تم إنشاء الحساب بنجاح\n\n"
+           f"🧾 اسم المستخدم: {username}\n"
+           f"🔑 كلمة المرور: {password}\n\n"
+           "يمكنك الآن تسجيل الدخول.\n"
+           "بعد تسجيل الدخول يمكنك توثيق حسابك من زر: 🪪 توثيق الحساب",
+           reply_markup=auth_keyboard()
+       )
+       return
 
     elif text == "تسجيل دخول":
         user_states[user_id] = "login_username"
@@ -2655,6 +2673,64 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=build_delete_account_confirm_keyboard()
         )
         return
+    
+    elif text == "🪪 توثيق الحساب":
+       username = logged_in_users.get(user_id)
+
+       if not username:
+           await update.message.reply_text("يجب تسجيل الدخول أولاً ❌\nاضغط /k")
+           return
+
+       if is_user_banned(username):
+           await update.message.reply_text("⛔ هذا الحساب محظور")
+           return
+
+       if verified_users.get(username, False):
+           await update.message.reply_text("✅ حسابك موثق بالفعل")
+           return
+
+       if user_id in pending_verification_requests:
+           await update.message.reply_text("⏳ لديك طلب توثيق قيد المراجعة بالفعل")
+           return
+
+       user_states[user_id] = {
+           "step": "verify_full_name"
+       }
+
+       await update.message.reply_text("أدخل الاسم والكنية كما هو موضح في الهوية الشخصية:")
+       return
+    
+    elif isinstance(user_states.get(user_id), dict) and user_states[user_id].get("step") == "verify_full_name":
+       full_name = text.strip()
+
+       if len(full_name) < 5:
+           await update.message.reply_text("❌ يرجى إدخال الاسم والكنية بشكل صحيح")
+           return
+
+       user_states[user_id] = {
+           "step": "verify_residence",
+           "full_name": full_name
+       }
+
+       await update.message.reply_text("أدخل مكان اقامتك (الدولة):")
+       return
+
+
+    elif isinstance(user_states.get(user_id), dict) and user_states[user_id].get("step") == "verify_residence":
+       residence = text.strip()
+
+       if len(residence) < 2:
+           await update.message.reply_text("❌ يرجى إدخال مكان إقامة صحيح")
+           return
+
+       user_states[user_id] = {
+           "step": "verify_id_photo",
+           "full_name": user_states[user_id]["full_name"],
+           "residence": residence
+       }
+
+       await update.message.reply_text("قم الآن برفع صورة واضحة للهوية الشخصية:")
+       return
 
     elif isinstance(user_states.get(user_id), dict) and user_states[user_id].get("step") == "change_password_old":
         username = logged_in_users.get(user_id)
@@ -4141,7 +4217,73 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=build_delete_last_batch_keyboard()
             )
             return
-    
+        
+        
+    if isinstance(state, dict) and state.get("step") == "verify_id_photo":
+       username = logged_in_users.get(user_id)
+
+       if not username:
+        user_states.pop(user_id, None)
+        await update.message.reply_text("انتهت الجلسة، سجّل الدخول مجددًا عبر /k")
+        return
+
+       if verified_users.get(username, False):
+        user_states.pop(user_id, None)
+        await update.message.reply_text("✅ حسابك موثق بالفعل")
+        return
+
+       full_name = state["full_name"]
+       residence = state["residence"]
+       id_file_id = update.message.photo[-1].file_id
+
+       pending_verification_requests[user_id] = {
+        "username": username,
+        "full_name": full_name,
+        "residence": residence,
+        "telegram_first_name": update.message.from_user.first_name,
+        "telegram_username": f"@{update.message.from_user.username}" if update.message.from_user.username else "لا يوجد",
+        "telegram_id": user_id,
+        "id_file_id": id_file_id,
+        "time": now_str(),
+        "type": "account_verification"
+       }
+
+       save_data()
+
+       verification_keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("✅ موافقة", callback_data=f"approve_verification_{user_id}"),
+            InlineKeyboardButton("❌ رفض", callback_data=f"reject_verification_{user_id}")
+        ]
+       ])
+
+       try:
+        await context.bot.send_photo(
+            chat_id=ADMIN_ID,
+            photo=id_file_id,
+            caption=(
+                f"🪪 طلب توثيق حساب\n\n"
+                f"👤 اسم المستخدم: {username}\n"
+                f"👤 الاسم والكنية: {full_name}\n"
+                f"🏠 مكان الإقامة: {residence}\n"
+                f"📱 يوزر تيليغرام: {pending_verification_requests[user_id]['telegram_username']}\n"
+                f"🆔 Telegram ID: {user_id}\n"
+                f"🕒 الوقت: {now_str()}"
+            ),
+            reply_markup=verification_keyboard
+        )
+
+        user_states.pop(user_id, None)
+
+        await update.message.reply_text("✅ تم إرسال طلب التوثيق إلى الإدارة، بانتظار المراجعة")
+
+       except Exception as e:
+        print(f"خطأ في إرسال طلب التوثيق للأدمن: {e}")
+        pending_verification_requests.pop(user_id, None)
+        save_data()
+        await update.message.reply_text("❌ حدث خطأ أثناء إرسال طلب التوثيق، حاول مرة أخرى")
+
+       return
     # =========================
     # صورة ضمن مراسلة الدعم
     # =========================
@@ -5179,106 +5321,72 @@ async def handle_admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
             )
         )
         return
-
+ 
     if data.startswith("approve_verification_"):
-        target_user_id = int(data.split("_")[-1])
-        request = pending_verification_requests.get(target_user_id)
+       target_user_id = int(data.split("_")[-1])
+       request = pending_verification_requests.get(target_user_id)
 
-        if not request:
-            await query.edit_message_caption(caption="❌ طلب التوثيق غير موجود")
-            return
+       if not request:
+        await query.edit_message_caption(caption="❌ طلب التوثيق غير موجود")
+        return
 
-        username = request["username"]
-        password = request["password"]
-        full_name = request["full_name"]
-        residence = request["residence"]
-        referral_value = request.get("referral", "غير محدد")
+       username = request["username"]
+       full_name = request["full_name"]
+       residence = request["residence"]
 
-        if username in users:
-            pending_verification_requests.pop(target_user_id, None)
-            save_data()
-            await query.edit_message_caption(caption="❌ تعذر الموافقة: اسم المستخدم مستخدم بالفعل")
-            return
+       if username not in users:
+        pending_verification_requests.pop(target_user_id, None)
+        save_data()
+        await query.edit_message_caption(caption="❌ المستخدم غير موجود")
+        return
 
-        users[username] = password
-        user_telegram_ids[username] = target_user_id
-        user_plans[username] = "NONE"
-        user_balance[username] = 0
-        transactions[username] = []
-        user_withdraw_logs[username] = []
-        user_deposit_logs[username] = []
-        user_deposits[username] = 0
-        user_last_profit[username] = time.time()
-        user_statuses[username] = "active"
-        user_residence[username] = residence
-        user_full_name[username] = full_name
-        verified_users[username] = True
-        user_created_time[username] = time.time()
-        if referral_value not in ["غير محدد", "بدون دعوة", "", None]:
-            referrer_username = referral_value.strip()
+       user_full_name[username] = full_name
+       user_residence[username] = residence
+       verified_users[username] = True
 
-            if referrer_username in users and referrer_username != username:
-               user_referrer[username] = referrer_username
+       pending_verification_requests.pop(target_user_id, None)
+       save_data()
 
-        referral_bonus_paid[username] = False
+       try:
+        await context.bot.send_message(
+            chat_id=target_user_id,
+            text=(
+                "✅ تم توثيق حسابك بنجاح\n\n"
+                f"👤 الاسم والكنية: {full_name}\n"
+                f"🏠 مكان الإقامة: {residence}"
+            )
+        )
+       except Exception as e:
+        print(f"خطأ في إرسال رسالة الموافقة للمستخدم: {e}")
 
-        save_users()
+       await query.edit_message_caption(
+        caption=(
+            f"✅ تمت الموافقة على توثيق الحساب\n\n"
+            f"👤 اسم المستخدم: {username}\n"
+            f"👤 الاسم والكنية: {full_name}\n"
+            f"🏠 مكان الإقامة: {residence}"
+        )
+       )
+       return
 
+    if data.startswith("reject_verification_"):
+       target_user_id = int(data.split("_")[-1])
+       request = pending_verification_requests.get(target_user_id)
+
+       if request:
         pending_verification_requests.pop(target_user_id, None)
         save_data()
 
-        login_after_register_keyboard = ReplyKeyboardMarkup(
-            [["تسجيل دخول"]],
-            resize_keyboard=True
-               )
-
-        try:
-           await context.bot.send_message(
-               chat_id=target_user_id,
-               text="✅ تم إنشاء الحساب بنجاح وتم التحقق من بياناتك"
-                  )
-           await context.bot.send_message(
-               chat_id=target_user_id,
-               text=(
-                   f"🎉 مبروك تم توثيق حسابك\n\n"
-                   f"👤 الاسم والكنية: {full_name}\n"
-                   f"🧾 اسم المستخدم: {username}\n"
-                   f"🔑 كلمة المرور: {password}\n\n"
-                   f"احفظ هذه البيانات جيدًا وقم بتسجيل الدخول"
-                ),
-               reply_markup=login_after_register_keyboard
-                    )
-        except Exception as e:
-             print(f"خطأ في إرسال رسالة الموافقة للمستخدم: {e}")
-
-        await query.edit_message_caption(
-            caption=(
-                f"✅ تمت الموافقة على طلب التوثيق\n\n"
-                f"👤 الاسم والكنية: {full_name}\n"
-                f"🏠 مكان الإقامة: {residence}\n"
-                f"🧾 اسم المستخدم: {username}"
-            )
+       try:
+        await context.bot.send_message(
+            chat_id=target_user_id,
+            text="❌ تم رفض طلب توثيق الحساب، يرجى إعادة المحاولة بصورة أوضح وبيانات صحيحة."
         )
-        return
+       except Exception as e:
+        print(f"خطأ في إرسال رسالة الرفض للمستخدم: {e}")
 
-    if data.startswith("reject_verification_"):
-        target_user_id = int(data.split("_")[-1])
-        request = pending_verification_requests.get(target_user_id)
-
-        if request:
-            pending_verification_requests.pop(target_user_id, None)
-            save_data()
-
-        try:
-            await context.bot.send_message(
-                chat_id=target_user_id,
-                text="❌ تعذر توثيق الحساب حاول مرة أخرى وحاول رفع صورة للهوية أكثر وضوحا , شكراً لتفهمكم !!"
-            )
-        except Exception as e:
-            print(f"خطأ في إرسال رسالة الرفض للمستخدم: {e}")
-
-        await query.edit_message_caption(caption="❌ تم رفض طلب التوثيق")
-        return
+       await query.edit_message_caption(caption="❌ تم رفض طلب التوثيق")
+       return
 
     if data == "admin_close_subscriptions":
         subscriptions_open = False
