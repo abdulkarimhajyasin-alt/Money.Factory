@@ -2290,29 +2290,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         # الرجوع من إدخال اسم المستخدم
-        elif isinstance(state, dict) and state.get("step") == "register_username":
-            user_states[user_id] = {
-                "step": "register_full_name",
-                "residence": state["residence"]
-            }
-            await update.message.reply_text(
-                "أدخل الاسم والكنية كما هو موضح في الهوية الشخصية:",
-                reply_markup=ReplyKeyboardMarkup([["🔙 رجوع"]], resize_keyboard=True)
-            )
-            return
+        elif state == "register_username":
+             user_states[user_id] = "ask_referral"
+             keyboard = [
+                ["دعوة من صديق"],
+                 ["بدون دعوة"],
+                ["🔙 رجوع"]
+                     ]
+             await update.message.reply_text(
+                   "كيف وصلت إلينا؟",
+                   reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+                 )
+             return
 
         # الرجوع من إدخال كلمة المرور
         elif isinstance(state, dict) and state.get("step") == "register_password":
-            user_states[user_id] = {
-                "step": "register_username",
-                "residence": state["residence"],
-                "full_name": state["full_name"]
-            }
-            await update.message.reply_text(
-                "أدخل اسم المستخدم:",
-                reply_markup=ReplyKeyboardMarkup([["🔙 رجوع"]], resize_keyboard=True)
-            )
-            return
+              user_states[user_id] = "register_username"
+
+              await update.message.reply_text(
+                      "أدخل اسم المستخدم:",
+                       reply_markup=ReplyKeyboardMarkup([["🔙 رجوع"]], resize_keyboard=True)
+                        )
+              return
         
                 # =========================
         # الرجوع داخل خطوات سحب الأرباح
@@ -2492,29 +2491,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
       )
       return
 
-    elif isinstance(user_states.get(user_id), dict) and user_states[user_id].get("step") == "register_username":
-      username = text.strip()
+    elif user_states.get(user_id) == "register_username":
+       username = text.strip()
 
-      if username in users:
-          await update.message.reply_text("اسم المستخدم موجود بالفعل ❌")
-          return
+       if username in users:
+        await update.message.reply_text("اسم المستخدم موجود بالفعل ❌")
+        return
 
-      for req in pending_verification_requests.values():
-          if req.get("username") == username:
-              await update.message.reply_text("اسم المستخدم محجوز ضمن طلب توثيق قيد المراجعة ❌")
-              return
+       for req in pending_verification_requests.values():
+        if req.get("username") == username:
+            await update.message.reply_text("اسم المستخدم محجوز ضمن طلب توثيق قيد المراجعة ❌")
+            return
 
-      user_states[user_id] = {
-          "step": "register_password",
-          "username": username,
-          "residence": user_states[user_id]["residence"],
-          "full_name": user_states[user_id]["full_name"]
-      }
-      await update.message.reply_text(
-          "أدخل كلمة المرور:",
-          reply_markup=ReplyKeyboardMarkup([["🔙 رجوع"]], resize_keyboard=True)
-      )
-      return
+       user_states[user_id] = {
+        "step": "register_password",
+        "username": username
+       }
+
+       await update.message.reply_text(
+        "أدخل كلمة المرور:",
+        reply_markup=ReplyKeyboardMarkup([["🔙 رجوع"]], resize_keyboard=True)
+       )
+       return
 
     elif isinstance(user_states.get(user_id), dict) and user_states[user_id].get("step") == "register_password":
        username = user_states[user_id]["username"]
