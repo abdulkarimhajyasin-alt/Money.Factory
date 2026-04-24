@@ -2696,20 +2696,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
     elif isinstance(user_states.get(user_id), dict) and user_states[user_id].get("step") == "verify_residence":
-       residence = text.strip()
+        residence = text.strip()
 
-       if len(residence) < 2:
-           await update.message.reply_text("❌ يرجى إدخال مكان إقامة صحيح")
-           return
+        if len(residence) < 2:
+            await update.message.reply_text("❌ يرجى إدخال مكان إقامة صحيح")
+            return
 
-       user_states[user_id] = {
-           "step": "verify_id_photo",
-           "full_name": user_states[user_id]["full_name"],
-           "residence": residence
-       }
+        user_states[user_id] = {
+           "step": "verify_id_front",
+          "full_name": user_states[user_id]["full_name"],
+          "residence": residence
+              }
 
-       await update.message.reply_text("قم الآن برفع صورة واضحة للهوية الشخصية:")
-       return
+        await update.message.reply_text("📷 قم الآن برفع صورة واضحة للوجه الأمامي للهوية الشخصية:")
+        return
 
     elif isinstance(user_states.get(user_id), dict) and user_states[user_id].get("step") == "change_password_old":
         username = logged_in_users.get(user_id)
@@ -4198,71 +4198,116 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         
         
-    if isinstance(state, dict) and state.get("step") == "verify_id_photo":
-       username = logged_in_users.get(user_id)
+        # =========================
+    # توثيق الحساب بعد التسجيل - الوجه الأمامي
+    # =========================
+    if isinstance(state, dict) and state.get("step") == "verify_id_front":
+        username = logged_in_users.get(user_id)
 
-       if not username:
-        user_states.pop(user_id, None)
-        await update.message.reply_text("انتهت الجلسة، سجّل الدخول مجددًا عبر /k")
-        return
+        if not username:
+            user_states.pop(user_id, None)
+            await update.message.reply_text("انتهت الجلسة، سجّل الدخول مجددًا عبر /k")
+            return
 
-       if verified_users.get(username, False):
-        user_states.pop(user_id, None)
-        await update.message.reply_text("✅ حسابك موثق بالفعل")
-        return
+        if verified_users.get(username, False):
+            user_states.pop(user_id, None)
+            await update.message.reply_text("✅ حسابك موثق بالفعل")
+            return
 
-       full_name = state["full_name"]
-       residence = state["residence"]
-       id_file_id = update.message.photo[-1].file_id
+        front_id_file_id = update.message.photo[-1].file_id
 
-       pending_verification_requests[user_id] = {
-        "username": username,
-        "full_name": full_name,
-        "residence": residence,
-        "telegram_first_name": update.message.from_user.first_name,
-        "telegram_username": f"@{update.message.from_user.username}" if update.message.from_user.username else "لا يوجد",
-        "telegram_id": user_id,
-        "id_file_id": id_file_id,
-        "time": now_str(),
-        "type": "account_verification"
-       }
+        user_states[user_id] = {
+            "step": "verify_id_back",
+            "full_name": state["full_name"],
+            "residence": state["residence"],
+            "front_id_file_id": front_id_file_id
+        }
 
-       save_data()
-
-       verification_keyboard = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("✅ موافقة", callback_data=f"approve_verification_{user_id}"),
-            InlineKeyboardButton("❌ رفض", callback_data=f"reject_verification_{user_id}")
-        ]
-       ])
-
-       try:
-        await context.bot.send_photo(
-            chat_id=ADMIN_ID,
-            photo=id_file_id,
-            caption=(
-                f"🪪 طلب توثيق حساب\n\n"
-                f"👤 اسم المستخدم: {username}\n"
-                f"👤 الاسم والكنية: {full_name}\n"
-                f"🏠 مكان الإقامة: {residence}\n"
-                f"📱 يوزر تيليغرام: {pending_verification_requests[user_id]['telegram_username']}\n"
-                f"🆔 Telegram ID: {user_id}\n"
-                f"🕒 الوقت: {now_str()}"
-            ),
-            reply_markup=verification_keyboard
+        await update.message.reply_text(
+            "✅ تم استلام صورة الوجه الأمامي للهوية\n\n"
+            "📷 الآن قم برفع صورة واضحة للوجه الخلفي للهوية الشخصية:"
         )
+        return
 
-        user_states.pop(user_id, None)
+    # =========================
+    # توثيق الحساب بعد التسجيل - الوجه الخلفي ثم إرسال الطلب للأدمن
+    # =========================
+    if isinstance(state, dict) and state.get("step") == "verify_id_back":
+        username = logged_in_users.get(user_id)
 
-        await update.message.reply_text("✅ تم إرسال طلب التوثيق إلى الإدارة، بانتظار المراجعة")
+        if not username:
+            user_states.pop(user_id, None)
+            await update.message.reply_text("انتهت الجلسة، سجّل الدخول مجددًا عبر /k")
+            return
 
-       except Exception as e:
-        print(f"خطأ في إرسال طلب التوثيق للأدمن: {e}")
-        pending_verification_requests.pop(user_id, None)
+        if verified_users.get(username, False):
+            user_states.pop(user_id, None)
+            await update.message.reply_text("✅ حسابك موثق بالفعل")
+            return
+
+        full_name = state["full_name"]
+        residence = state["residence"]
+        front_id_file_id = state["front_id_file_id"]
+        back_id_file_id = update.message.photo[-1].file_id
+
+        pending_verification_requests[user_id] = {
+            "username": username,
+            "full_name": full_name,
+            "residence": residence,
+            "telegram_first_name": update.message.from_user.first_name,
+            "telegram_username": f"@{update.message.from_user.username}" if update.message.from_user.username else "لا يوجد",
+            "telegram_id": user_id,
+            "front_id_file_id": front_id_file_id,
+            "back_id_file_id": back_id_file_id,
+            "time": now_str(),
+            "type": "account_verification"
+        }
+
         save_data()
-        await update.message.reply_text("❌ حدث خطأ أثناء إرسال طلب التوثيق، حاول مرة أخرى")
 
-       return
+        verification_keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("✅ موافقة", callback_data=f"approve_verification_{user_id}"),
+                InlineKeyboardButton("❌ رفض", callback_data=f"reject_verification_{user_id}")
+            ]
+        ])
+
+        try:
+            await context.bot.send_photo(
+                chat_id=ADMIN_ID,
+                photo=front_id_file_id,
+                caption=(
+                    f"🪪 طلب توثيق حساب\n\n"
+                    f"👤 اسم المستخدم: {username}\n"
+                    f"👤 الاسم والكنية: {full_name}\n"
+                    f"🏠 مكان الإقامة: {residence}\n"
+                    f"📱 يوزر تيليغرام: {pending_verification_requests[user_id]['telegram_username']}\n"
+                    f"🆔 Telegram ID: {user_id}\n"
+                    f"🕒 الوقت: {now_str()}\n\n"
+                    f"📷 صورة الوجه الأمامي للهوية"
+                )
+            )
+
+            await context.bot.send_photo(
+                chat_id=ADMIN_ID,
+                photo=back_id_file_id,
+                caption="📷 صورة الوجه الخلفي للهوية",
+                reply_markup=verification_keyboard
+            )
+
+            user_states.pop(user_id, None)
+
+            await update.message.reply_text(
+                "✅ تم إرسال طلب التوثيق إلى الإدارة، بانتظار المراجعة"
+            )
+
+        except Exception as e:
+            print(f"خطأ في إرسال طلب التوثيق للأدمن: {e}")
+            pending_verification_requests.pop(user_id, None)
+            save_data()
+            await update.message.reply_text("❌ حدث خطأ أثناء إرسال طلب التوثيق، حاول مرة أخرى")
+
+        return
     # =========================
     # صورة ضمن مراسلة الدعم
     # =========================
