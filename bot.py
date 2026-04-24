@@ -2445,9 +2445,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         elif text == "بدون دعوة":
           REFERRAL_DATA[user_id] = "بدون دعوة"
-          user_states[user_id] = "register_residence"
-          await update.message.reply_text(
-              "أدخل مكان الإقامة:",
+          user_states[user_id] = "register_username"
+          await update.message.reply_text("أدخل اسم المستخدم:",
               reply_markup=ReplyKeyboardMarkup([["🔙 رجوع"]], resize_keyboard=True)
           )
           return
@@ -2469,29 +2468,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
        REFERRAL_DATA[user_id] = ref_username
-       user_states[user_id] = "register_residence"
-       await update.message.reply_text(
-           "أدخل مكان الإقامة:",
+       user_states[user_id] = "register_username"
+       await update.message.reply_text("أدخل اسم المستخدم:",
            reply_markup=ReplyKeyboardMarkup([["🔙 رجوع"]], resize_keyboard=True)
-       )
+            )
        return
-    
-    elif user_states.get(user_id) == "register_residence":
-      residence = text.strip()
-
-      if len(residence) < 2:
-          await update.message.reply_text("❌ يرجى إدخال مكان إقامة صحيح")
-          return
-
-      user_states[user_id] = {
-          "step": "register_full_name",
-          "residence": residence
-      }
-      await update.message.reply_text(
-          "أدخل الاسم والكنية كما هو موضح في الهوية الشخصية:",
-          reply_markup=ReplyKeyboardMarkup([["🔙 رجوع"]], resize_keyboard=True)
-      )
-      return
     
     elif isinstance(user_states.get(user_id), dict) and user_states[user_id].get("step") == "register_full_name":
       full_name = text.strip()
