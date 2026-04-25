@@ -2,6 +2,7 @@ import json
 import time
 import asyncio
 import os
+from urllib.parse import quote
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from psycopg2.pool import ThreadedConnectionPool
@@ -24,6 +25,8 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
 ADMIN_ID = 5685737658
 DATA_FILE = "data.json"
+
+BOT_USERNAME = "Moneyfactory1bot"
 
 db_pool = None
 
@@ -598,6 +601,32 @@ def get_all_direct_invited_users(parent_username):
 
 def get_all_invited_count(username):
     return len(get_all_direct_invited_users(username))
+
+def build_referral_link(user_id):
+    return f"https://t.me/{BOT_USERNAME}?start=ref_{user_id}"
+
+
+def get_referrer_from_start_payload(payload, current_user_id):
+    if not payload:
+        return None
+
+    if not payload.startswith("ref_"):
+        return None
+
+    try:
+        inviter_id = int(payload.replace("ref_", "", 1))
+    except:
+        return None
+
+    if int(inviter_id) == int(current_user_id):
+        return None
+
+    inviter_username = find_username_by_telegram_id(inviter_id)
+
+    if inviter_username and inviter_username in users:
+        return inviter_username
+
+    return None
 
 
 def get_status_badge(username):
@@ -1538,8 +1567,8 @@ def build_deleted_accounts_log_text(limit=10):
 def main_menu_keyboard():
     keyboard = [
         ["الصفحة الرئيسية"],
-        ["الباقة الذهبية", "الباقة الفضية"],
-        ["باقة VIP"],
+        ["باقة VIP","الباقة الذهبية", "الباقة الفضية"],
+        ["👥 دعوة صديق"],
         ["باقتي", "💸 سحب الأرباح"],
         ["🏦 سحب رأس المال وإيقاف الربح", "🪪 توثيق الحساب"],
         ["📜 سجل العمليات", "🔐 تغيير كلمة المرور"],
@@ -1887,6 +1916,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
     user_id = update.message.chat_id
 
+    # =========================
+    # استقبال رابط الإحالة من /start
+    # مثال الرابط:
+    # https://t.me/Moneyfactory1bot?start=ref_123456789
+    # =========================
+    if context.args:
+        payload = context.args[0]
+        referrer_username = get_referrer_from_start_payload(payload, user_id)
+
+        existing_username = find_username_by_telegram_id(user_id)
+
+        if referrer_username and not existing_username:
+            REFERRAL_DATA[user_id] = referrer_username
+
     if user_id in logged_in_users:
        username = logged_in_users[user_id]
        user_telegram_ids[username] = user_id
@@ -1897,6 +1940,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         save_chat_ids()
 
         username_text = f"@{user.username}" if user.username else "لا يوجد"
+        referral_text = REFERRAL_DATA.get(user_id, "لا يوجد")
 
         msg = (
             f"🚀 مستخدم جديد دخل البوت\n\n"
@@ -1904,6 +1948,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🔗 اليوزر: {username_text}\n"
             f"🆔 ID: {user.id}\n"
             f"🌐 اللغة: {user.language_code}\n"
+            f"👥 دخل عبر دعوة: {referral_text}\n"
             f"📊 عدد المستخدمين: {len(chat_ids)}"
         )
 
@@ -2498,6 +2543,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     elif user_states.get(user_id) == "accept_terms":
         if text == "✅ موافق":
+            auto_referrer = REFERRAL_DATA.get(user_id)
+
+            if auto_referrer and auto_referrer in users and auto_referrer != find_username_by_telegram_id(user_id):
+                user_states[user_id] = "register_username"
+
+                await update.message.reply_text(
+                    f"✅ تم اعتماد دعوتك تلقائيًا عن طريق المستخدم:\n"
+                    f"{auto_referrer}\n\n"
+                    f"أدخل اسم المستخدم:",
+                    reply_markup=ReplyKeyboardMarkup([["🔙 رجوع"]], resize_keyboard=True)
+                )
+                return
+
             user_states[user_id] = "ask_referral"
 
             keyboard = [
@@ -2716,17 +2774,67 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             tg_first_name = user.first_name if user.first_name else "مستخدم"
 
             await update.message.reply_text(
-                  f"✅ أهلاً بك {tg_first_name}{extra_msg}\n\n"
-                  f"نود إخبارك أنك ستحصل على 20% هدية على أول إيداع لأي صديق يشترك معنا عن طريقك 💰\n\n"
-                  f"للحصول على الهدية يجب عليك مشاركة اسم المستخدم الخاص بك داخل البوت مع أصدقائك:\n"
-                  f"{username}\n\n"
-                  f"ويجب على صديقك إدخال هذا الاسم داخل البوت عند اختيار: دعوة من صديق\n\n"
-                  f"وشكراً لك 🙏"
-                     )
+                 f"👋 أهلاً بك {tg_first_name}{extra_msg}\n\n"
+                 f"💎 عميلنا العزيز:\n\n"
+                 f"عندما يقوم مشترك جديد بالاشتراك في المنصة عن طريق اسم المستخدم الخاص بك،\n"
+                 f"سيتم إضافة بونص 20% 🎁 إلى رصيدك من قيمة إيداع المشترك الجديد.\n\n"
+                 f"📌 اسم المستخدم الخاص بك:\n"
+                 f"{username}\n\n"
+                 f"🔗 شاركه مع أصدقائك للاستفادة من نظام الإحالة.\n\n"
+                 f"نتمنى لك تجربة موفقة 🚀"
+                      )
             await update.message.reply_text("للاشتراك اختر احدى الباقات في الاسفل \n\nواتبع الخطوات بدقة لاتمام اشتراكك بنجاح \n\nاذا كنت مشترك لدينا يمكنك الانتقال فورا الى باقتي للدخول الى باقتك",
                                             reply_markup=main_menu_keyboard())
         else:
             await update.message.reply_text("❌ اسم المستخدم أو كلمة المرور غير صحيحة")
+        return
+    
+    elif text == "👥 دعوة صديق":
+        username = logged_in_users.get(user_id)
+
+        if not username:
+            await update.message.reply_text("يجب تسجيل الدخول أولاً ❌\nاضغط /k")
+            return
+
+        if is_user_banned(username):
+            await update.message.reply_text("⛔ هذا الحساب محظور")
+            return
+
+        invite_link = build_referral_link(user_id)
+
+        share_text = (
+            "انضم إلى منصة Money factory عبر رابط دعوتي.\n\n"
+            "بعد الدخول إلى البوت اضغط إنشاء حساب جديد، ثم وافق على شروط الاستخدام، "
+            "وسيتم تسجيلك تلقائيًا ضمن دعوتي.\n\n"
+            f"رابط الدعوة:\n{invite_link}"
+        )
+
+        telegram_share_url = (
+            f"https://t.me/share/url?"
+            f"url={quote(invite_link)}&"
+            f"text={quote(share_text)}"
+        )
+
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("📤 مشاركة عبر تيليغرام", url=telegram_share_url)
+            ],
+            [
+                InlineKeyboardButton("🚀 فتح رابط الدعوة", url=invite_link)
+            ]
+        ])
+
+        await update.message.reply_text(
+            f"👥 رابط دعوتك الخاص\n\n"
+            f"عند دخول أي صديق من هذا الرابط وإنشاء حساب جديد، "
+            f"سيتم تسجيله تلقائيًا تحت اسمك داخل نظام الإحالات.\n\n"
+            f"🔗 رابط الدعوة:\n"
+            f"{invite_link}\n\n"
+            f"📌 اسم المستخدم الخاص بك داخل البوت:\n"
+            f"{username}\n\n"
+            f"🎁 عند أول إيداع للمشترك الجديد، ستحصل على بونص 20% من قيمة إيداعه.",
+            reply_markup=keyboard
+        )
         return
 
     elif text == "🔐 تغيير كلمة المرور":
