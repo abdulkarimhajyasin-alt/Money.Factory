@@ -227,30 +227,20 @@ def db_set(key, value):
 # =========================
 def load_users():
     global users
-    try:
-        with open("users.json", "r", encoding="utf-8") as f:
-            users = json.load(f)
-    except:
-        users = {}
+    users = db_get("users", {})
 
 
 def save_users():
-    with open("users.json", "w", encoding="utf-8") as f:
-        json.dump(users, f, ensure_ascii=False, indent=2)
+    db_set("users", users)
 
 
 def load_chat_ids():
     global chat_ids
-    try:
-        with open("chat_ids.json", "r", encoding="utf-8") as f:
-            chat_ids = json.load(f)
-    except:
-        chat_ids = []
+    chat_ids = db_get("chat_ids", [])
 
 
 def save_chat_ids():
-    with open("chat_ids.json", "w", encoding="utf-8") as f:
-        json.dump(chat_ids, f, ensure_ascii=False, indent=2)
+    db_set("chat_ids", chat_ids)
 
 
 def load_data():
@@ -272,89 +262,59 @@ def load_data():
     global user_wallet_address
     global user_wallet_network
 
-    try:
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
+    data = db_get("data", {})
 
-        user_plans = data.get("user_plans", {})
-        user_balance = data.get("user_balance", {})
-        transactions = data.get("transactions", {})
-        user_deposits = data.get("user_deposits", {})
-        user_last_profit = data.get("user_last_profit", {})
-        user_withdraw_logs = data.get("user_withdraw_logs", {})
-        user_deposit_logs = data.get("user_deposit_logs", {})
-        support_blocked_users = data.get("support_blocked_users", {})
-        user_first_deposit_time = data.get("user_first_deposit_time", {})
-        user_last_withdraw_time = data.get("user_last_withdraw_time", {})
-        user_telegram_ids = data.get("user_telegram_ids", {})
-        subscriptions_open = data.get("subscriptions_open", True)
-        pending_verification_requests = {
-            int(k): v for k, v in data.get("pending_verification_requests", {}).items()
-             }
-        user_residence = data.get("user_residence", {})
-        user_full_name = data.get("user_full_name", {})
-        verified_users = data.get("verified_users", {})
-        user_referrer = data.get("user_referrer", {})
-        referral_bonus_paid = data.get("referral_bonus_paid", {})
-        capital_withdraw_requests = {
-            int(k): v for k, v in data.get("capital_withdraw_requests", {}).items()
-           }
-        stopped_profit_users = data.get("stopped_profit_users", {})
-        support_waiting_reply = data.get("support_waiting_reply", {})
-        admin_sent_batches = data.get("admin_sent_batches", {})
-        admin_last_batch_id = data.get("admin_last_batch_id", None)
-        deleted_accounts_log = data.get("deleted_accounts_log", [])
-        manual_withdraw_open = data.get("manual_withdraw_open", {})
-        user_created_time = data.get("user_created_time", {})
-        user_tree_views = data.get("user_tree_views", {})
-        user_wallet_address = data.get("user_wallet_address", {})
-        user_wallet_network = data.get("user_wallet_network", {})
+    user_plans = data.get("user_plans", {})
+    user_balance = data.get("user_balance", {})
+    transactions = data.get("transactions", {})
+    user_deposits = data.get("user_deposits", {})
+    user_last_profit = data.get("user_last_profit", {})
+    user_withdraw_logs = data.get("user_withdraw_logs", {})
+    user_deposit_logs = data.get("user_deposit_logs", {})
+    support_blocked_users = data.get("support_blocked_users", {})
+    user_first_deposit_time = data.get("user_first_deposit_time", {})
+    user_last_withdraw_time = data.get("user_last_withdraw_time", {})
+    user_telegram_ids = data.get("user_telegram_ids", {})
+    subscriptions_open = data.get("subscriptions_open", True)
 
-        pending_deposit_requests = {
-            int(k): v for k, v in data.get("pending_deposit_requests", {}).items()
-        }
-        pending_withdraw_requests = {
-            int(k): v for k, v in data.get("pending_withdraw_requests", {}).items()
-        }
-        logged_in_users = {
-            int(k): v for k, v in data.get("logged_in_users", {}).items()
-        }
-        user_statuses = data.get("user_statuses", {})
+    pending_verification_requests = {
+        int(k): v for k, v in data.get("pending_verification_requests", {}).items()
+    }
 
-    except:
-        user_plans = {}
-        user_balance = {}
-        transactions = {}
-        user_deposits = {}
-        user_last_profit = {}
-        user_withdraw_logs = {}
-        user_deposit_logs = {}
-        pending_deposit_requests = {}
-        pending_withdraw_requests = {}
-        logged_in_users = {}
-        user_statuses = {}
-        support_blocked_users = {}
-        user_first_deposit_time = {}
-        user_last_withdraw_time = {}
-        user_telegram_ids = {}
-        subscriptions_open = True
-        pending_verification_requests = {}
-        user_residence = {}
-        user_full_name = {}
-        verified_users = {}
-        user_referrer = {}
-        referral_bonus_paid = {}
-        capital_withdraw_requests = {}
-        stopped_profit_users = {}
-        support_waiting_reply = {}
-        admin_sent_batches = {}
-        admin_last_batch_id = None
-        deleted_accounts_log = []
-        manual_withdraw_open = {}
-        user_created_time = {}
-        user_tree_views = {}
-        user_wallet_address = {}
-        user_wallet_network = {}
+    user_residence = data.get("user_residence", {})
+    user_full_name = data.get("user_full_name", {})
+    verified_users = data.get("verified_users", {})
+    user_referrer = data.get("user_referrer", {})
+    referral_bonus_paid = data.get("referral_bonus_paid", {})
+
+    capital_withdraw_requests = {
+        int(k): v for k, v in data.get("capital_withdraw_requests", {}).items()
+    }
+
+    stopped_profit_users = data.get("stopped_profit_users", {})
+    support_waiting_reply = data.get("support_waiting_reply", {})
+    admin_sent_batches = data.get("admin_sent_batches", {})
+    admin_last_batch_id = data.get("admin_last_batch_id", None)
+    deleted_accounts_log = data.get("deleted_accounts_log", [])
+    manual_withdraw_open = data.get("manual_withdraw_open", {})
+    user_created_time = data.get("user_created_time", {})
+    user_tree_views = data.get("user_tree_views", {})
+    user_wallet_address = data.get("user_wallet_address", {})
+    user_wallet_network = data.get("user_wallet_network", {})
+
+    pending_deposit_requests = {
+        int(k): v for k, v in data.get("pending_deposit_requests", {}).items()
+    }
+
+    pending_withdraw_requests = {
+        int(k): v for k, v in data.get("pending_withdraw_requests", {}).items()
+    }
+
+    logged_in_users = {
+        int(k): v for k, v in data.get("logged_in_users", {}).items()
+    }
+
+    user_statuses = data.get("user_statuses", {})
 
 
 def save_data():
@@ -392,11 +352,9 @@ def save_data():
         "pending_withdraw_requests": {str(k): v for k, v in pending_withdraw_requests.items()},
         "logged_in_users": {str(k): v for k, v in logged_in_users.items()},
         "user_statuses": user_statuses,
-        
     }
 
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    db_set("data", data)
 
 def is_support_blocked(username):
     return bool(support_blocked_users.get(username, False))
