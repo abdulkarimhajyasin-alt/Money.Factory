@@ -1235,6 +1235,14 @@ def get_capital_withdraw_countdown_text(username):
 
     return f"{days} يوم، {hours} ساعة، {minutes} دقيقة، {seconds} ثانية"
 
+def has_active_capital_withdraw_request(username):
+    user_id = get_saved_telegram_id(username)
+
+    if not user_id:
+        return False
+
+    return user_id in capital_withdraw_requests
+
 def build_capital_withdraw_requests_text():
     if not capital_withdraw_requests:
         return "📭 لا توجد طلبات سحب رأس مال معلقة حالياً"
@@ -3850,6 +3858,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if is_user_frozen(username):
             await update.message.reply_text("⚠️ حسابك مجمد ماليًا، ولا يمكن طلب إيداع جديد حاليًا")
             return
+        
+        if has_active_capital_withdraw_request(username):
+            await update.message.reply_text(
+                "⛔ لا يمكنك تنفيذ أي إيداع أو اشتراك جديد حاليًا\n\n"
+                "لديك طلب سحب رأس مال قيد الانتظار.\n"
+                f"⌛ الوقت المتبقي: {get_capital_withdraw_countdown_text(username)}"
+            )
+            return
+
+        if user_plans.get(username) not in [None, "NONE"]:
+            await update.message.reply_text("❌ لديك باقة مفعلة بالفعل ولا يمكنك الاشتراك بأكثر من باقة")
+            return
 
         if user_plans.get(username) not in [None, "NONE"]:
             await update.message.reply_text("❌ لديك باقة مفعلة بالفعل ولا يمكنك الاشتراك بأكثر من باقة")
@@ -3871,6 +3891,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
       if not username:
           user_states.pop(user_id, None)
           await update.message.reply_text("يجب تسجيل الدخول أولاً ❌", reply_markup=auth_keyboard())
+          return
+      
+      if has_active_capital_withdraw_request(username):
+          user_states.pop(user_id, None)
+          await update.message.reply_text(
+              "⛔ تم إلغاء عملية تغيير الباقة\n\n"
+              "لديك طلب سحب رأس مال قيد الانتظار، ولا يمكنك تغيير الباقة حتى تتم معالجة الطلب.",
+              reply_markup=main_menu_keyboard()
+          )
           return
 
       try:
@@ -3916,6 +3945,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not username:
             user_states.pop(user_id, None)
             await update.message.reply_text("يجب تسجيل الدخول أولاً ❌", reply_markup=auth_keyboard())
+            return
+        
+        if has_active_capital_withdraw_request(username):
+            user_states.pop(user_id, None)
+            await update.message.reply_text(
+                "⛔ تم إلغاء عملية الإيداع الجديد\n\n"
+                "لديك طلب سحب رأس مال قيد الانتظار، ولا يمكنك الإيداع حتى تتم معالجة الطلب.",
+                reply_markup=main_menu_keyboard()
+            )
             return
 
         try:
@@ -4074,6 +4112,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if is_user_frozen(username):
             await update.message.reply_text("⚠️ حسابك مجمد ماليًا، ولا يمكنك تنفيذ إيداع جديد حاليًا")
+            return
+        
+        if has_active_capital_withdraw_request(username):
+            await update.message.reply_text(
+                "⛔ لا يمكنك تنفيذ إيداع جديد حاليًا\n\n"
+                "لديك طلب سحب رأس مال قيد الانتظار.\n"
+                f"⌛ الوقت المتبقي: {get_capital_withdraw_countdown_text(username)}\n\n"
+                "بعد تنفيذ طلب سحب رأس المال وإغلاق الباقة، يمكنك الاشتراك من جديد."
+            )
             return
 
         current_plan = user_plans.get(username, "NONE")
@@ -4858,6 +4905,15 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not username:
         await update.message.reply_text("يجب تسجيل الدخول أولاً ❌\nاضغط /k")
         return
+    
+    if has_active_capital_withdraw_request(username):
+        user_states.pop(user_id, None)
+        await update.message.reply_text(
+            "⛔ تم رفض إثبات الدفع\n\n"
+            "لديك طلب سحب رأس مال قيد الانتظار، ولا يمكنك تنفيذ أي إيداع أو تغيير باقة حتى تتم معالجة الطلب.",
+            reply_markup=main_menu_keyboard()
+        )
+        return
 
     ensure_user_defaults(username)
 
@@ -5291,6 +5347,14 @@ async def handle_admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
 
         if is_user_frozen(username):
             await query.message.reply_text("⚠️ حسابك مجمد ماليًا، ولا يمكن طلب إيداع جديد حاليًا")
+            return
+        
+        if has_active_capital_withdraw_request(username):
+            await query.message.reply_text(
+                "⛔ لا يمكنك تنفيذ أي إيداع أو اشتراك جديد حاليًا\n\n"
+                "لديك طلب سحب رأس مال قيد الانتظار.\n"
+                f"⌛ الوقت المتبقي: {get_capital_withdraw_countdown_text(username)}"
+            )
             return
 
         if user_plans.get(username) not in [None, "NONE"]:
@@ -6095,6 +6159,15 @@ async def handle_admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
             await query.edit_message_text("يجب تسجيل الدخول أولاً ❌")
             return
 
+        if has_active_capital_withdraw_request(username):
+            await query.edit_message_text(
+                "⛔ لا يمكنك تغيير الباقة حاليًا\n\n"
+                "لديك طلب سحب رأس مال قيد الانتظار.\n"
+                f"⌛ الوقت المتبقي: {get_capital_withdraw_countdown_text(username)}\n\n"
+                "بعد تنفيذ طلب سحب رأس المال وإغلاق الباقة، يمكنك الاشتراك من جديد."
+            )
+            return
+
         current_plan = user_plans.get(username)
 
         if current_plan in [None, "NONE"]:
@@ -6125,6 +6198,14 @@ async def handle_admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
 
         if not username:
             await query.edit_message_text("يجب تسجيل الدخول أولاً ❌")
+            return
+        
+        if has_active_capital_withdraw_request(username):
+            await query.edit_message_text(
+                "⛔ لا يمكنك تغيير الباقة حاليًا\n\n"
+                "لديك طلب سحب رأس مال قيد الانتظار.\n"
+                f"⌛ الوقت المتبقي: {get_capital_withdraw_countdown_text(username)}"
+            )
             return
 
         target_plan = data.split("::", 1)[1]
@@ -6205,6 +6286,14 @@ async def handle_admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
         if not username:
             await query.edit_message_text("يجب تسجيل الدخول أولاً ❌")
             return
+        
+        if has_active_capital_withdraw_request(username):
+            await query.edit_message_text(
+                "⛔ لا يمكنك تنفيذ إيداع لتغيير الباقة حاليًا\n\n"
+                "لديك طلب سحب رأس مال قيد الانتظار.\n"
+                f"⌛ الوقت المتبقي: {get_capital_withdraw_countdown_text(username)}"
+            )
+            return
 
         target_plan = data.split("::", 1)[1]
 
@@ -6255,6 +6344,26 @@ async def handle_admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
         username = request["username"]
         ensure_user_defaults(username)
         request_type = request.get("type", "new_deposit")
+
+        if has_active_capital_withdraw_request(username):
+            pending_deposit_requests.pop(user_id, None)
+            save_data()
+
+            try:
+                await context.bot.send_message(
+                    chat_id=user_id,
+                    text=(
+                        "❌ تم رفض طلب الإيداع تلقائيًا\n\n"
+                        "لديك طلب سحب رأس مال قيد الانتظار، ولا يمكن تنفيذ أي إيداع أو تغيير باقة حتى تتم معالجة الطلب."
+                    )
+                )
+            except:
+                pass
+
+            await query.edit_message_caption(
+                caption="❌ تم رفض الطلب لأن المستخدم لديه طلب سحب رأس مال قيد الانتظار"
+            )
+            return
 
         if request_type == "topup_deposit":
             current_plan = user_plans.get(username, "NONE")
