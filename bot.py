@@ -1354,6 +1354,22 @@ def get_upgrade_plans(current_plan):
         if PLAN_LEVELS.get(plan_name, 0) > current_level
     ]
 
+def get_plan_by_capital_amount(amount):
+    amount = float(amount)
+
+    for plan_name, plan_data in PLANS.items():
+        min_deposit = float(plan_data["min_deposit"])
+        max_deposit = plan_data["max_deposit"]
+
+        if max_deposit is None:
+            if amount >= min_deposit:
+                return plan_name
+        else:
+            if min_deposit <= amount <= float(max_deposit):
+                return plan_name
+
+    return None
+
 def build_change_plan_keyboard(current_plan):
     upgrade_plans = get_upgrade_plans(current_plan)
     buttons = []
@@ -1568,8 +1584,8 @@ def main_menu_keyboard():
     keyboard = [
         ["الصفحة الرئيسية"],
         ["باقة VIP","الباقة الذهبية", "الباقة الفضية"],
-        ["👥 دعوة صديق"],
-        ["باقتي", "💸 سحب الأرباح"],
+        ["باقتي","👥 دعوة صديق"],
+        ["➕ إيداع جديد","💸 سحب الأرباح"],
         ["🏦 سحب رأس المال وإيقاف الربح", "🪪 توثيق الحساب"],
         ["📜 سجل العمليات", "🔐 تغيير كلمة المرور"],
         ["🗑 حذف حسابي", "📩 مراسلة الدعم"],
@@ -3893,6 +3909,90 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
       await update.message.reply_text("TFuFGGiWGUFB4Z1sCSZiVfjkxhUWJmZ6nQ")
       await update.message.reply_text("📸 بعد التحويل، قم بأخذ لقطة شاشة لإشعار الإرسال وأرسل لنا إثبات الدفع")
       return
+    
+    elif isinstance(user_states.get(user_id), dict) and user_states[user_id].get("step") == "topup_enter_amount":
+        username = logged_in_users.get(user_id)
+
+        if not username:
+            user_states.pop(user_id, None)
+            await update.message.reply_text("يجب تسجيل الدخول أولاً ❌", reply_markup=auth_keyboard())
+            return
+
+        try:
+            amount = float(text)
+        except:
+            await update.message.reply_text("❌ أدخل مبلغًا صحيحًا بالأرقام فقط")
+            return
+
+        if amount <= 0:
+            await update.message.reply_text("❌ يجب أن يكون مبلغ الإيداع أكبر من صفر")
+            return
+
+        current_plan = user_states[user_id]["current_plan"]
+
+        if current_plan not in PLANS:
+            user_states.pop(user_id, None)
+            await update.message.reply_text("❌ باقتك الحالية غير معروفة داخل النظام", reply_markup=main_menu_keyboard())
+            return
+
+        current_capital = get_user_capital(username)
+        final_capital = round(current_capital + amount, 2)
+
+        current_plan_data = PLANS[current_plan]
+        current_max_deposit = current_plan_data["max_deposit"]
+
+        suitable_plan = get_plan_by_capital_amount(final_capital)
+
+        # إذا كان رأس المال النهائي خرج من حدود الباقة الحالية
+        if current_max_deposit is not None and final_capital > float(current_max_deposit):
+            if suitable_plan and suitable_plan != current_plan:
+                await update.message.reply_text(
+                    f"⚠️ لا يمكن إضافة هذا الإيداع ضمن باقتك الحالية\n\n"
+                    f"📦 باقتك الحالية: {current_plan}\n"
+                    f"💰 رأس مالك الحالي: {current_capital}$\n"
+                    f"➕ مبلغ الإيداع الجديد: {amount}$\n"
+                    f"📈 رأس المال بعد الإيداع: {final_capital}$\n\n"
+                    f"✅ هذا الرصيد يؤهلك للانضمام إلى:\n"
+                    f"📦 {suitable_plan}\n\n"
+                    f"يرجى استخدام خيار:\n"
+                    f"📦 تغيير الباقة الحالية\n"
+                    f"من داخل صفحة باقتي.",
+                    reply_markup=main_menu_keyboard()
+                )
+                user_states.pop(user_id, None)
+                return
+
+            await update.message.reply_text(
+                f"❌ المبلغ الجديد يتجاوز حدود باقتك الحالية\n\n"
+                f"📦 باقتك الحالية: {current_plan}\n"
+                f"📈 رأس المال بعد الإيداع: {final_capital}$"
+            )
+            user_states.pop(user_id, None)
+            return
+
+        # في حال VIP لا يوجد حد أعلى
+        user_states[user_id] = {
+            "step": "send_topup_proof",
+            "amount": amount,
+            "current_plan": current_plan,
+            "final_capital": final_capital
+        }
+
+        await update.message.reply_text(
+            f"✅ الإيداع الجديد مناسب لباقتك الحالية\n\n"
+            f"📦 الباقة: {current_plan}\n"
+            f"💰 رأس المال الحالي: {current_capital}$\n"
+            f"➕ مبلغ الإيداع الجديد: {amount}$\n"
+            f"📈 رأس المال بعد الموافقة: {final_capital}$\n\n"
+            f"يرجى تحويل المبلغ إلى عنوان المحفظة التالي على شبكة TRC20:"
+        )
+
+        await update.message.reply_text("TFuFGGiWGUFB4Z1sCSZiVfjkxhUWJmZ6nQ")
+
+        await update.message.reply_text(
+            "📸 بعد التحويل، قم بإرسال صورة إثبات الدفع"
+        )
+        return
 
     elif isinstance(user_states.get(user_id), dict) and user_states[user_id].get("step") == "enter_amount":
         try:
@@ -3957,6 +4057,64 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         await update.message.reply_text(build_user_financial_history_text(username))
+        return
+    
+    elif text == "➕ إيداع جديد":
+        username = logged_in_users.get(user_id)
+
+        if not username:
+            await update.message.reply_text("يجب تسجيل الدخول أولاً ❌\nاضغط /k")
+            return
+
+        ensure_user_defaults(username)
+
+        if is_user_banned(username):
+            await update.message.reply_text("⛔ حسابك محظور")
+            return
+
+        if is_user_frozen(username):
+            await update.message.reply_text("⚠️ حسابك مجمد ماليًا، ولا يمكنك تنفيذ إيداع جديد حاليًا")
+            return
+
+        current_plan = user_plans.get(username, "NONE")
+
+        if current_plan in [None, "NONE"]:
+            await update.message.reply_text(
+                "❌ لا توجد لديك باقة مفعلة حاليًا\n\n"
+                "لإضافة رصيد يجب أن تكون مشتركًا في باقة أولًا."
+            )
+            return
+
+        if current_plan not in PLANS:
+            await update.message.reply_text("❌ باقتك الحالية غير معروفة داخل النظام")
+            return
+
+        if user_id in pending_deposit_requests:
+            await update.message.reply_text("⏳ لديك طلب إيداع معلق بالفعل بانتظار مراجعة الإدارة")
+            return
+
+        current_capital = get_user_capital(username)
+        current_balance = get_user_total_balance(username)
+        current_plan_data = PLANS[current_plan]
+
+        max_deposit = current_plan_data["max_deposit"]
+        max_text = "بدون حد أعلى" if max_deposit is None else f"{max_deposit}$"
+
+        user_states[user_id] = {
+            "step": "topup_enter_amount",
+            "current_plan": current_plan
+        }
+
+        await update.message.reply_text(
+            f"➕ إيداع جديد فوق رصيدك الحالي\n\n"
+            f"📦 باقتك الحالية: {current_plan}\n"
+            f"💰 رأس مالك الحالي: {current_capital}$\n"
+            f"📈 رصيدك الحالي: {current_balance}$\n\n"
+            f"📌 حدود باقتك الحالية:\n"
+            f"من {current_plan_data['min_deposit']}$ إلى {max_text}\n\n"
+            f"💵 أدخل مبلغ الإيداع الجديد:",
+            reply_markup=ReplyKeyboardMarkup([["🔙 رجوع"]], resize_keyboard=True)
+        )
         return
 
     elif text == "🏦 سحب رأس المال وإيقاف الربح":
@@ -4692,7 +4850,8 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # =========================
     # صور إثبات الإيداع وتغيير الباقة
     # =========================
-    if not isinstance(state, dict) or state.get("step") not in ["send_proof", "send_plan_change_proof"]:
+
+    if not isinstance(state, dict) or state.get("step") not in ["send_proof", "send_plan_change_proof", "send_topup_proof"]:
         return
     username = logged_in_users.get(user_id)
 
@@ -4767,6 +4926,56 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         user_states.pop(user_id, None)
         await update.message.reply_text("✅ تم إرسال طلب تغيير الباقة إلى الإدارة")
+        return
+    
+    if state.get("step") == "send_topup_proof":
+        current_plan = user_plans.get(username, "NONE")
+        amount = round(float(state["amount"]), 2)
+        current_capital = get_user_capital(username)
+        final_capital = round(current_capital + amount, 2)
+
+        pending_deposit_requests[user_id] = {
+            "username": username,
+            "plan": current_plan,
+            "amount": amount,
+            "type": "topup_deposit",
+            "old_capital": current_capital,
+            "final_capital": final_capital
+        }
+        save_data()
+
+        keyboard = [
+            [
+                InlineKeyboardButton("✅ موافقة", callback_data=f"approve_deposit_{user_id}"),
+                InlineKeyboardButton("❌ رفض", callback_data=f"reject_deposit_{user_id}")
+            ],
+            [
+                InlineKeyboardButton("💼 إضافة محفظة", callback_data=f"add_wallet_{user_id}")
+            ]
+        ]
+        admin_markup = InlineKeyboardMarkup(keyboard)
+
+        await context.bot.send_photo(
+            chat_id=ADMIN_ID,
+            photo=photo_file.file_id,
+            caption=(
+                f"➕ طلب إيداع جديد فوق الرصيد الحالي\n\n"
+                f"👤 المستخدم: {username}\n"
+                f"🆔 ID: {user_id}\n"
+                f"📌 الحالة: {get_status_text(username)}\n"
+                f"📦 الباقة الحالية: {current_plan}\n"
+                f"💰 رأس المال الحالي: {current_capital}$\n"
+                f"➕ مبلغ الإيداع الجديد: {amount}$\n"
+                f"📈 رأس المال بعد الموافقة: {final_capital}$"
+            ),
+            reply_markup=admin_markup
+        )
+
+        user_states.pop(user_id, None)
+        await update.message.reply_text(
+            "✅ تم إرسال طلب الإيداع الجديد إلى الإدارة، بانتظار المراجعة",
+            reply_markup=main_menu_keyboard()
+        )
         return
 
     pending_deposit_requests[user_id] = {
@@ -6047,6 +6256,108 @@ async def handle_admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
         ensure_user_defaults(username)
         request_type = request.get("type", "new_deposit")
 
+        if request_type == "topup_deposit":
+            current_plan = user_plans.get(username, "NONE")
+
+            if current_plan in [None, "NONE"] or current_plan not in PLANS:
+                pending_deposit_requests.pop(user_id, None)
+                save_data()
+                await context.bot.send_message(
+                    chat_id=user_id,
+                    text="❌ تم رفض الإيداع لأنك لا تملك باقة مفعلة حاليًا"
+                )
+                await query.edit_message_caption(caption="❌ تم رفض الإيداع لأن المستخدم لا يملك باقة مفعلة")
+                return
+
+            if is_user_frozen(username) or is_user_banned(username):
+                pending_deposit_requests.pop(user_id, None)
+                save_data()
+                await context.bot.send_message(
+                    chat_id=user_id,
+                    text="❌ لا يمكن الموافقة على الإيداع لأن حالة الحساب لا تسمح بذلك"
+                )
+                await query.edit_message_caption(caption="❌ لا يمكن الموافقة لأن الحساب غير نشط")
+                return
+
+            amount = round(float(request["amount"]), 2)
+
+            # تحديث الأرباح القديمة قبل زيادة رأس المال
+            update_profit(username)
+
+            old_capital = get_user_capital(username)
+            old_balance = get_user_total_balance(username)
+            new_capital = round(old_capital + amount, 2)
+            new_balance = round(old_balance + amount, 2)
+
+            current_plan_data = PLANS[current_plan]
+            current_max_deposit = current_plan_data["max_deposit"]
+
+            if current_max_deposit is not None and new_capital > float(current_max_deposit):
+                suitable_plan = get_plan_by_capital_amount(new_capital)
+
+                pending_deposit_requests.pop(user_id, None)
+                save_data()
+
+                await context.bot.send_message(
+                    chat_id=user_id,
+                    text=(
+                        f"❌ لم تتم الموافقة على الإيداع الجديد لأنه يتجاوز حدود باقتك الحالية\n\n"
+                        f"📦 باقتك الحالية: {current_plan}\n"
+                        f"💰 رأس المال الحالي: {old_capital}$\n"
+                        f"➕ مبلغ الإيداع المطلوب: {amount}$\n"
+                        f"📈 رأس المال بعد الإيداع: {new_capital}$\n\n"
+                        f"✅ هذا الرصيد يناسب باقة: {suitable_plan if suitable_plan else 'غير محددة'}\n"
+                        f"يرجى طلب تغيير الباقة بدل الإيداع العادي."
+                    )
+                )
+
+                await query.edit_message_caption(
+                    caption="❌ تم رفض الإيداع لأنه يتجاوز حدود الباقة الحالية"
+                )
+                return
+
+            user_deposits[username] = new_capital
+            user_balance[username] = new_balance
+            user_last_profit[username] = time.time()
+
+            user_deposit_logs.setdefault(username, []).append({
+                "amount": amount,
+                "time": now_str(),
+                "type": "topup_deposit"
+            })
+
+            add_transaction(
+                username,
+                "topup_deposit_approved",
+                amount,
+                f"إيداع جديد فوق الرصيد الحالي | رأس المال من {old_capital}$ إلى {new_capital}$"
+            )
+
+            pending_deposit_requests.pop(user_id, None)
+            save_data()
+
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=(
+                    f"✅ تمت الموافقة على الإيداع الجديد بنجاح\n\n"
+                    f"📦 الباقة الحالية: {current_plan}\n"
+                    f"➕ مبلغ الإيداع: {amount}$\n"
+                    f"💰 رأس المال الجديد: {new_capital}$\n"
+                    f"📈 الرصيد الحالي: {new_balance}$"
+                ),
+                reply_markup=main_menu_keyboard()
+            )
+
+            await query.edit_message_caption(
+                caption=(
+                    f"✅ تمت الموافقة على الإيداع الجديد\n\n"
+                    f"👤 المستخدم: {username}\n"
+                    f"➕ المبلغ: {amount}$\n"
+                    f"💰 رأس المال الجديد: {new_capital}$"
+                )
+            )
+            return
+
         if request_type == "plan_change":
             old_plan = request.get("old_plan", user_plans.get(username, "NONE"))
             new_plan = request.get("new_plan", request["plan"])
@@ -6165,6 +6476,8 @@ async def handle_admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
 
          if request_type == "plan_change":
             reject_text = "❌ تم رفض طلب تغيير الباقة"
+         elif request_type == "topup_deposit":
+            reject_text = "❌ تم رفض طلب الإيداع الجديد"
          else:
             reject_text = "❌ تم رفض طلب الإيداع"
 
