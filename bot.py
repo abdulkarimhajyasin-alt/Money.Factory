@@ -2567,6 +2567,30 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
        save_users()
        save_data()
 
+       try:
+            tg_first_name = user.first_name if user.first_name else "غير متوفر"
+            tg_username_text = f"@{user.username}" if user.username else "لا يوجد"
+            referral_text = REFERRAL_DATA.get(user_id, "غير محدد")
+
+            await context.bot.send_message(
+                 chat_id=ADMIN_ID,
+                 text=(
+                    f"🆕 تم إنشاء حساب جديد\n\n"
+                    f"👤 الاسم في تيليغرام: {tg_first_name}\n"
+                    f"📱 يوزر تيليغرام: {tg_username_text}\n"
+                    f"🆔 Telegram ID: {user_id}\n\n"
+                    f"🧾 اسم المستخدم داخل البوت: {username}\n"
+                    f"🔑 كلمة المرور: {password}\n"
+                    f"📌 طريقة الوصول: {referral_text}\n"
+                    f"🪪 حالة التوثيق: غير موثق ❌\n"
+                    f"📦 الباقة: NONE\n"
+                    f"💰 الرصيد: 0$\n"
+                    f"🕒 وقت إنشاء الحساب: {now_str()}"
+                     )
+                )
+       except Exception as e:
+            print(f"خطأ في إرسال إشعار إنشاء الحساب للأدمن: {e}")
+
        user_states.pop(user_id, None)
 
        await update.message.reply_text(
