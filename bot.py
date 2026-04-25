@@ -72,7 +72,6 @@ PLANS = {
         "name": "الفضية",
         "min_deposit": 10,
         "max_deposit": 100,
-        "min_withdraw": 10,
         "profit": "2% يومياً",
         "withdraw_time": "كل 30 يوم",
         "withdraw_days": 30
@@ -81,7 +80,6 @@ PLANS = {
         "name": "الذهبية",
         "min_deposit": 101,
         "max_deposit": 300,
-        "min_withdraw": 101,
         "profit": "2% يومياً",
         "withdraw_time": "كل 20 يوم",
         "withdraw_days": 20
@@ -90,7 +88,6 @@ PLANS = {
     "name": "VIP",
     "min_deposit": 301,
     "max_deposit": None,
-    "min_withdraw": 301,
     "profit": "2% يومياً",
     "withdraw_time": "كل 10 أيام",
     "withdraw_days": 10
@@ -480,6 +477,10 @@ def get_daily_profit_amount(username):
     if capital <= 0:
         return 0.0
     return round(capital * 0.02, 2)
+
+def get_min_withdraw_amount(username):
+    capital = get_user_capital(username)
+    return round(capital * 0.20, 2)
 
 def update_profit(username):
     if username not in user_deposits:
@@ -1049,6 +1050,7 @@ def build_my_plan_text(username, user_id):
     balance = get_user_total_balance(username)
     profit_only = get_user_profit_only(username)
     daily_profit = get_daily_profit_amount(username)
+    min_withdraw = get_min_withdraw_amount(username)
     verification_text = "تم التحقق ✅" if verified_users.get(username, False) else "غير موثق ❌"
 
     if plan in [None, "NONE"]:
@@ -1075,6 +1077,8 @@ def build_my_plan_text(username, user_id):
     f"📈 الرصيد الحالي: {balance}$\n"
     f"💵 الأرباح القابلة للسحب: {profit_only}$\n"
     f"🪙 ربحك اليومي: {daily_profit}$\n"
+    f"📉 الحد الأدنى لسحب الأرباح: {min_withdraw}$\n"
+    f"📌 طريقة حساب الحد الأدنى: 20% من رأس المال المودع\n"
     f"📊 حالة الربح: {profit_status_text}\n"
     f"⏰ موعد الربح القادم: {get_next_profit_time(username)}\n"
     f"💸 موعد السحب القادم: {next_withdraw_date}\n"
@@ -1354,7 +1358,7 @@ def build_plan_features_text(plan_name):
         f"✅ اسم الباقة: {plan['name']}\n"
         f"💰 الحد الأدنى للإيداع: {plan['min_deposit']}$\n"
         f"💰 الحد الأعلى للإيداع: {'بدون حد أعلى' if plan['max_deposit'] is None else str(plan['max_deposit']) + '$'}\n"
-        f"💸 الحد الأدنى للسحب: 20% من رأس المال\n"
+        f"💸 الحد الأدنى للسحب: 20% من رأس المال المودع\n"
         f"📈 نسبة الربح: {plan['profit']}\n"
         f"⏳ موعد السحب: {plan['withdraw_time']}\n\n"
         f"📌 شروط الاشتراك:\n"
@@ -3924,7 +3928,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         plan_name = user_plans.get(username)
         capital = get_user_capital(username)
-        min_withdraw = round(capital * 0.20, 2)
+        min_withdraw = get_min_withdraw_amount(username)
         profit_only = get_user_profit_only(username)
         if not is_withdraw_available_now(username):
          await update.message.reply_text(
@@ -3940,11 +3944,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if profit_only < min_withdraw:
             await update.message.reply_text(
-                f"❌ الحد الأدنى للسحب هو 20% من رأس المال\n\n"
+                f"❌ لا يمكنك طلب السحب حالياً لأن أرباحك أقل من الحد الأدنى للسحب\n\n"
                 f"💰 رأس مالك: {capital}$\n"
                 f"📉 الحد الأدنى للسحب: {min_withdraw}$\n"
-                f"📈 الأرباح المتاحة: {profit_only}$"
-                  )
+                f"📈 الأرباح المتاحة: {profit_only}$\n\n"
+                f"📌 الحد الأدنى للسحب يساوي 20% من رأس المال"
+            )
             return
 
         user_states[user_id] = {
@@ -3984,7 +3989,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         max_profit = float(user_states[user_id]["max_profit"])
 
         capital = get_user_capital(username)
-        min_withdraw = round(capital * 0.20, 2)
+        min_withdraw = get_min_withdraw_amount(username)
 
         if amount <= 0:
             await update.message.reply_text("❌ يجب أن يكون مبلغ السحب أكبر من صفر")
@@ -3999,10 +4004,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if amount < min_withdraw:
             await update.message.reply_text(
-                f"❌ الحد الأدنى للسحب هو 20% من رأس المال\n\n"
+                f"❌ المبلغ الذي أدخلته أقل من الحد الأدنى للسحب\n\n"
                 f"💰 رأس مالك: {capital}$\n"
                 f"📉 الحد الأدنى للسحب: {min_withdraw}$\n"
-                f"📥 المبلغ الذي أدخلته: {amount}$"
+                f"📥 المبلغ الذي أدخلته: {amount}$\n\n"
+                f"📌 الحد الأدنى للسحب يساوي 20% من رأس المال"
             )
             return
 
@@ -4885,6 +4891,36 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # =========================
 # أزرار الأدمن
 # =========================
+def is_admin_callback(data):
+    admin_prefixes = (
+        "admin_",
+        "approve_deposit_",
+        "reject_deposit_",
+        "approve_withdraw_",
+        "reject_withdraw_",
+        "approve_verification_",
+        "reject_verification_",
+        "capital_paid_",
+        "filter_users_",
+        "treeuser::",
+        "treeback::",
+        "alltreeuser::",
+        "alltreeback::",
+        "msg_plan_",
+        "reply_support_",
+        "add_wallet_",
+    )
+
+    admin_exact = {
+        "admin_close_subscriptions",
+        "admin_open_subscriptions",
+        "back_to_admin_menu",
+        "back_to_filter_menu",
+        "delete_last_admin_batch",
+    }
+
+    return data in admin_exact or data.startswith(admin_prefixes)
+
 async def handle_admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global subscriptions_open
     global admin_last_batch_id
@@ -4896,6 +4932,22 @@ async def handle_admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
         
 
     data = query.data
+
+    # =========================
+    # حماية صارمة لأزرار الأدمن
+    # =========================
+    if is_admin_callback(data) and query.from_user.id != ADMIN_ID:
+        try:
+            await query.answer("❌ هذا الزر خاص بالإدارة فقط", show_alert=True)
+        except:
+            pass
+
+        try:
+            await query.message.reply_text("❌ ليس لديك صلاحية تنفيذ هذا الإجراء")
+        except:
+            pass
+
+        return
 
     if data.startswith("subscribe_plan::"):
         user_id = query.from_user.id
@@ -4948,7 +5000,7 @@ async def handle_admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
            f"📦 اخترت {plan_name}\n"
            f"💰 أدخل مبلغ الإيداع ابتداءً من {plan['min_deposit']}$ وحتى {max_text}"
              )
-
+        return
 
     if data == "plan_details_back_home":
         await context.bot.send_message(
@@ -6044,10 +6096,31 @@ async def handle_admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
 
         current_balance = get_user_total_balance(username)
         capital = get_user_capital(username)
+        min_withdraw = get_min_withdraw_amount(username)
         max_profit_available = round(current_balance - capital, 2)
 
         if max_profit_available < 0:
             max_profit_available = 0
+
+        if amount < min_withdraw:
+            pending_withdraw_requests.pop(user_id, None)
+            save_data()
+
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=(
+                    f"❌ تم رفض طلب السحب لأن المبلغ أقل من الحد الأدنى للسحب\n\n"
+                    f"💰 رأس مالك: {capital}$\n"
+                    f"📉 الحد الأدنى للسحب: {min_withdraw}$\n"
+                    f"💸 المبلغ المطلوب: {amount}$\n\n"
+                    f"📌 الحد الأدنى للسحب يساوي 20% من رأس المال"
+                )
+            )
+
+            await query.edit_message_text(
+                "❌ تم رفض طلب السحب لأن المبلغ أقل من الحد الأدنى"
+            )
+            return
 
         amount = min(amount, max_profit_available)
 
@@ -6059,6 +6132,25 @@ async def handle_admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
                 text="❌ تعذر تنفيذ السحب لأن الأرباح المتاحة أصبحت غير كافية"
             )
             await query.edit_message_text("❌ الأرباح المتاحة لم تعد كافية لتنفيذ السحب")
+            return
+
+        if amount < min_withdraw:
+            pending_withdraw_requests.pop(user_id, None)
+            save_data()
+
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=(
+                    f"❌ تم رفض طلب السحب لأن الأرباح المتاحة أصبحت أقل من الحد الأدنى للسحب\n\n"
+                    f"💰 رأس مالك: {capital}$\n"
+                    f"📉 الحد الأدنى للسحب: {min_withdraw}$\n"
+                    f"📈 الأرباح المتاحة الآن: {max_profit_available}$"
+                )
+            )
+
+            await query.edit_message_text(
+                "❌ تم رفض طلب السحب لأن الأرباح المتاحة أصبحت أقل من الحد الأدنى"
+            )
             return
 
         user_balance[username] = round(current_balance - amount, 2)
