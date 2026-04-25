@@ -2,6 +2,8 @@ import json
 import time
 import asyncio
 import os
+import psycopg2
+from psycopg2.extras import RealDictCursor
 from telegram import ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     ApplicationBuilder,
@@ -18,6 +20,7 @@ load_dotenv()
 # الإعدادات العامة
 # =========================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+DATABASE_URL = os.getenv("DATABASE_URL")
 ADMIN_ID = 5685737658
 DATA_FILE = "data.json"
 
@@ -161,6 +164,62 @@ def format_timestamp(ts):
         return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(float(ts)))
     except:
         return "غير متوفر"
+    
+# =========================
+# PostgreSQL Storage
+# =========================
+def get_db_connection():
+    if not DATABASE_URL:
+        raise ValueError("DATABASE_URL غير موجود. تأكد من إضافته داخل Render Environment.")
+    return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+
+
+def init_db():
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS bot_storage (
+            key TEXT PRIMARY KEY,
+            value JSONB NOT NULL
+        );
+    """)
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+def db_get(key, default_value):
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    cur.execute("SELECT value FROM bot_storage WHERE key = %s;", (key,))
+    row = cur.fetchone()
+
+    cur.close()
+    conn.close()
+
+    if row:
+        return row["value"]
+
+    return default_value
+
+
+def db_set(key, value):
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        INSERT INTO bot_storage (key, value)
+        VALUES (%s, %s::jsonb)
+        ON CONFLICT (key)
+        DO UPDATE SET value = EXCLUDED.value;
+    """, (key, json.dumps(value, ensure_ascii=False)))
+
+    conn.commit()
+    cur.close()
+    conn.close()    
     
 
 # =========================
@@ -6446,6 +6505,8 @@ async def unblock_support_user(update: Update, context: ContextTypes.DEFAULT_TYP
 def main():
     if not BOT_TOKEN:
         raise ValueError("BOT_TOKEN غير موجود. تأكد من وضع التوكن أو متغير البيئة.")
+    
+    init_db()
 
     load_users()
     load_chat_ids()
