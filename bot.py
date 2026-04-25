@@ -2819,9 +2819,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [
                 InlineKeyboardButton("📤 مشاركة عبر تيليغرام", url=telegram_share_url)
             ],
-            [
-                InlineKeyboardButton("🚀 فتح رابط الدعوة", url=invite_link)
-            ]
         ])
 
         await update.message.reply_text(
