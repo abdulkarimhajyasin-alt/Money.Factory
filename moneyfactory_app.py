@@ -56,6 +56,7 @@ user_first_deposit_time = {}   # وقت أول إيداع مقبول
 user_last_withdraw_time = {}   # وقت آخر سحب تمت الموافقة عليه
 user_telegram_ids = {}   # username -> telegram user id
 subscriptions_open = True   # True = الاشتراك مفتوح / False = الاشتراك متوقف
+bot_maintenance_mode = False   # True = البوت متوقف للصيانة / False = البوت يعمل طبيعيًا
 user_referrer = {}          # username -> referrer username
 referral_bonus_paid = {}    # username -> True/False
 capital_withdraw_requests = {}   # user_id -> بيانات طلب سحب رأس المال
@@ -324,7 +325,7 @@ def load_data():
     global user_withdraw_logs, user_deposit_logs
     global pending_deposit_requests, pending_withdraw_requests
     global logged_in_users, user_statuses, support_blocked_users
-    global user_telegram_ids, subscriptions_open
+    global user_telegram_ids, subscriptions_open, bot_maintenance_mode
     global pending_verification_requests, user_residence, user_full_name, verified_users
     global user_referrer, referral_bonus_paid
     global user_first_deposit_time, user_last_withdraw_time
@@ -352,6 +353,7 @@ def load_data():
     user_last_withdraw_time = data.get("user_last_withdraw_time", {})
     user_telegram_ids = data.get("user_telegram_ids", {})
     subscriptions_open = data.get("subscriptions_open", True)
+    bot_maintenance_mode = data.get("bot_maintenance_mode", False)
 
     pending_verification_requests = {
         int(k): v for k, v in data.get("pending_verification_requests", {}).items()
@@ -408,6 +410,7 @@ def save_data():
         "user_last_withdraw_time": user_last_withdraw_time,
         "user_telegram_ids": user_telegram_ids,
         "subscriptions_open": subscriptions_open,
+        "bot_maintenance_mode": bot_maintenance_mode,
         "pending_verification_requests": {str(k): v for k, v in pending_verification_requests.items()},
         "user_residence": user_residence,
         "user_full_name": user_full_name,
@@ -746,6 +749,9 @@ def get_status_text(username):
 
 def get_subscriptions_status_text():
     return "مفتوح ✅" if subscriptions_open else "متوقف ⛔"
+
+def get_bot_maintenance_status_text():
+    return "متوقف للصيانة ⛔" if bot_maintenance_mode else "يعمل طبيعيًا ✅"
 
 def is_user_banned(username):
     return get_user_status(username) == "banned"
@@ -1833,6 +1839,7 @@ def admin_keyboard():
         ["🏦 طلبات سحب رأس المال", "🗑 سجل الحسابات المحذوفة"],
         ["👥 عدد المستخدمين", "📊 ملخص مالي"],
         ["📌 حالة الاشتراك", "⛔ إيقاف/تشغيل الاشتراك"],
+        ["🛠 حالة البوت", "⏯ إيقاف/تشغيل البوت"],
         ["📢 إرسال رسالة للجميع", "📨 إرسال رسالة حسب الباقة"],
         ["📂 فلترة المستخدمين", "📈 إحصائيات متقدمة"],
         ["🔍 بحث عن مستخدم", "🗑 حذف مستخدم"],
@@ -1890,6 +1897,16 @@ def add_message_to_batch(batch_id, chat_id, message_id):
 def build_delete_last_batch_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🗑 حذف آخر إرسال من المستخدمين", callback_data="delete_last_admin_batch")]
+    ])
+
+def build_bot_maintenance_keyboard():
+    if bot_maintenance_mode:
+        return InlineKeyboardMarkup([
+            [InlineKeyboardButton("✅ تشغيل البوت", callback_data="admin_disable_maintenance")]
+        ])
+
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("⛔ إيقاف البوت للصيانة", callback_data="admin_enable_maintenance")]
     ])
 
 def get_batch_type_text(batch_type):
@@ -2238,11 +2255,12 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     await update.message.reply_text(
-      f"🛠 لوحة تحكم الأدمن\n"
-      f"📌 حالة الاشتراك العامة: {get_subscriptions_status_text()}\n"
-      f"اختر أحد الخيارات:",
-      reply_markup=admin_keyboard()
-      )
+         f"🛠 لوحة تحكم الأدمن\n"
+         f"📌 حالة الاشتراك العامة: {get_subscriptions_status_text()}\n"
+         f"🛠 حالة البوت: {get_bot_maintenance_status_text()}\n"
+         f"اختر أحد الخيارات:",
+        reply_markup=admin_keyboard()
+         )
 
 
 # =========================
@@ -2270,6 +2288,21 @@ async def send_to_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
 
     await update.message.reply_text(f"✅ تم إرسال الرسالة إلى {success} مستخدم")
+
+async def notify_all_users(context: ContextTypes.DEFAULT_TYPE, message_text: str):
+    success = 0
+    failed = 0
+
+    for uid in list(chat_ids):
+        try:
+            await context.bot.send_message(chat_id=uid, text=message_text)
+            success += 1
+            await asyncio.sleep(0.05)
+        except Exception as e:
+            print(f"تعذر إرسال إشعار الصيانة إلى {uid}: {e}")
+            failed += 1
+
+    return success, failed    
 
 
 # =========================
@@ -2896,6 +2929,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
     user_id = user.id
     text = update.message.text.strip() if update.message.text else ""
+
+    if bot_maintenance_mode and user_id != ADMIN_ID:
+        await update.message.reply_text(
+            "⛔ البوت متوقف مؤقتًا للصيانة\n\n"
+            "تقوم الإدارة حالياً بإجراء تحديثات على النظام.\n"
+            "يرجى المحاولة لاحقًا."
+        )
+        return
 
     tg_username = f"@{user.username}" if user.username else "لا يوجد يوزر نيم ❌"
 
@@ -3858,6 +3899,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
           "📢 اكتب الآن الرسالة التي تريد إرسالها إلى جميع المستخدمين:\n\n"
           "للتراجع اضغط: 🔙 إلغاء الإرسال",
           reply_markup=admin_cancel_keyboard()
+      )
+      return
+    
+    elif text == "🛠 حالة البوت":
+      if user_id != ADMIN_ID:
+        await update.message.reply_text("❌ هذا الخيار خاص بالأدمن فقط")
+        return
+
+      await update.message.reply_text(
+        f"🛠 حالة البوت الحالية: {get_bot_maintenance_status_text()}"
+      )
+      return
+
+    elif text == "⏯ إيقاف/تشغيل البوت":
+      if user_id != ADMIN_ID:
+        await update.message.reply_text("❌ هذا الخيار خاص بالأدمن فقط")
+        return
+
+      await update.message.reply_text(
+        f"🛠 حالة البوت الحالية: {get_bot_maintenance_status_text()}\n"
+        f"اختر الإجراء المطلوب:",
+        reply_markup=build_bot_maintenance_keyboard()
       )
       return
     
@@ -5065,6 +5128,14 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     state = user_states.get(user_id)
 
+    if bot_maintenance_mode and user_id != ADMIN_ID:
+        await update.message.reply_text(
+            "⛔ البوت متوقف مؤقتًا للصيانة\n\n"
+            "تقوم الإدارة حالياً بإجراء تحديثات على النظام.\n"
+            "يرجى المحاولة لاحقًا."
+        )
+        return
+
     # اسمح للأدمن بالإرسال حتى بدون state عادي
     if not state and not is_admin_media_send_step(user_id):
        return
@@ -5703,6 +5774,14 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
 
+    if bot_maintenance_mode and user_id != ADMIN_ID:
+        await update.message.reply_text(
+            "⛔ البوت متوقف مؤقتًا للصيانة\n\n"
+            "تقوم الإدارة حالياً بإجراء تحديثات على النظام.\n"
+            "يرجى المحاولة لاحقًا."
+        )
+        return
+
     if not is_admin_media_send_step(user_id):
         return
 
@@ -5915,6 +5994,8 @@ def is_admin_callback(data):
     admin_exact = {
         "admin_close_subscriptions",
         "admin_open_subscriptions",
+        "admin_enable_maintenance",
+        "admin_disable_maintenance",
         "back_to_admin_menu",
         "back_to_filter_menu",
         "delete_last_admin_batch",
@@ -5924,6 +6005,7 @@ def is_admin_callback(data):
 
 async def handle_admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global subscriptions_open
+    global bot_maintenance_mode
     global admin_last_batch_id
     query = update.callback_query
     try:
@@ -5944,6 +6026,23 @@ async def handle_admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
 
         await go_back_from_data_entry_state(user_id, context)
         return
+    
+    if bot_maintenance_mode and query.from_user.id != ADMIN_ID:
+        try:
+            await query.answer("⛔ البوت متوقف مؤقتًا للصيانة", show_alert=True)
+        except:
+            pass
+
+        try:
+            await query.message.reply_text(
+                "⛔ البوت متوقف مؤقتًا للصيانة\n\n"
+                "تقوم الإدارة حالياً بإجراء تحديثات على النظام.\n"
+                "يرجى المحاولة لاحقًا."
+            )
+        except:
+            pass
+
+        return
 
     # =========================
     # حماية صارمة لأزرار الأدمن
@@ -5959,6 +6058,59 @@ async def handle_admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
         except:
             pass
 
+        return
+    
+    if data == "admin_enable_maintenance":
+        bot_maintenance_mode = True
+        save_data()
+
+        await query.edit_message_text(
+            f"✅ تم إيقاف البوت للصيانة\n"
+            f"🛠 حالة البوت الآن: {get_bot_maintenance_status_text()}"
+        )
+
+        success, failed = await notify_all_users(
+            context,
+            "⛔ البوت متوقف مؤقتًا للصيانة\n\n"
+            "تقوم الإدارة حالياً بإجراء تحديثات على النظام.\n"
+            "يرجى عدم تنفيذ أي عمليات الآن، وسيتم إشعاركم عند عودة البوت للعمل."
+        )
+
+        await context.bot.send_message(
+            chat_id=ADMIN_ID,
+            text=(
+                f"📢 تم إرسال إشعار الصيانة للمستخدمين\n\n"
+                f"✅ تم الإرسال إلى: {success}\n"
+                f"❌ فشل الإرسال إلى: {failed}"
+            ),
+            reply_markup=admin_keyboard()
+        )
+        return
+
+    if data == "admin_disable_maintenance":
+        bot_maintenance_mode = False
+        save_data()
+
+        await query.edit_message_text(
+            f"✅ تم تشغيل البوت من جديد\n"
+            f"🛠 حالة البوت الآن: {get_bot_maintenance_status_text()}"
+        )
+
+        success, failed = await notify_all_users(
+            context,
+            "✅ تم تشغيل البوت من جديد\n\n"
+            "يمكنكم الآن استخدام جميع خدمات البوت بشكل طبيعي."
+        )
+
+        await context.bot.send_message(
+            chat_id=ADMIN_ID,
+            text=(
+                f"📢 تم إرسال إشعار تشغيل البوت للمستخدمين\n\n"
+                f"✅ تم الإرسال إلى: {success}\n"
+                f"❌ فشل الإرسال إلى: {failed}"
+            ),
+            reply_markup=admin_keyboard()
+        )
         return
 
     if data.startswith("subscribe_plan::"):
