@@ -2683,7 +2683,7 @@ def get_data_entry_warning_text(user_id):
     if step in ["verify_full_name"]:
         return (
             "⚠️ أنت الآن داخل عملية توثيق الحساب.\n\n"
-            "يرجى إدخال الاسم والكنية كما هو موضح في الهوية الشخصية، "
+            "يرجى إدخال الاسم والكنية كما هو موضح في البطاقة الشخصية، "
             "أو اضغط 🔙 رجوع لإلغاء الخطوة والعودة."
         )
 
@@ -2841,7 +2841,7 @@ async def go_back_from_data_entry_state(user_id, context):
         }
         await context.bot.send_message(
             chat_id=user_id,
-            text="أدخل الاسم والكنية كما هو موضح في الهوية الشخصية:",
+            text="أدخل الاسم والكنية كما هو موضح في البطاقة الشخصية:",
             reply_markup=main_menu_keyboard()
         )
         return
@@ -3486,7 +3486,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
            "step": "verify_full_name"
        }
 
-       await update.message.reply_text("أدخل الاسم والكنية كما هو موضح في الهوية الشخصية:")
+       await update.message.reply_text("أدخل الاسم والكنية كما هو موضح في البطاقة الشخصية:")
        return
     
     elif isinstance(user_states.get(user_id), dict) and user_states[user_id].get("step") == "verify_full_name":

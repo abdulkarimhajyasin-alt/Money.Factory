@@ -3163,7 +3163,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
           "residence": residence
               }
 
-        await update.message.reply_text("📷 قم الآن برفع صورة واضحة للوجه الأمامي للهوية الشخصية:")
+        await update.message.reply_text("📷 قم الآن برفع صورة واضحة للوجه الأمامي للبطاقة الشخصية:")
         return
 
     elif isinstance(user_states.get(user_id), dict) and user_states[user_id].get("step") == "change_password_old":
@@ -4925,8 +4925,8 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }
 
         await update.message.reply_text(
-            "✅ تم استلام صورة الوجه الأمامي للهوية\n\n"
-            "📷 الآن قم برفع صورة واضحة للوجه الخلفي للهوية الشخصية:"
+            "✅ تم استلام صورة الوجه الأمامي للبطاقة الشخصية\n\n"
+            "📷 الآن قم برفع صورة واضحة للوجه الخلفي للبطاقة الشخصية:"
         )
         return
 
@@ -4985,14 +4985,14 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"📱 يوزر تيليغرام: {pending_verification_requests[user_id]['telegram_username']}\n"
                     f"🆔 Telegram ID: {user_id}\n"
                     f"🕒 الوقت: {now_str()}\n\n"
-                    f"📷 صورة الوجه الأمامي للهوية"
+                    f"📷 صورة الوجه الأمامي للبطاقة"
                 )
             )
 
             await context.bot.send_photo(
                 chat_id=ADMIN_ID,
                 photo=back_id_file_id,
-                caption="📷 صورة الوجه الخلفي للهوية",
+                caption="📷 صورة الوجه الخلفي للبطاقة",
                 reply_markup=verification_keyboard
             )
 
@@ -5099,7 +5099,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }
 
         await update.message.reply_text(
-            "✅ تم استلام صورة الوجه الأمامي للهوية\nالآن قم برفع صورة واضحة للوجه الخلفي للهوية الشخصية:"
+            "✅ تم استلام صورة الوجه الأمامي للبطاقة الشخصية\nالآن قم برفع صورة واضحة للوجه الخلفي للبطاقة الشخصية:"
         )
         return
 
@@ -5143,14 +5143,14 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"🆔 Telegram ID: {user_id}\n"
                     f"📌 تم دعوته عن طريق: {REFERRAL_DATA.get(user_id, 'غير محدد')}\n"
                     f"🕒 الوقت: {now_str()}\n\n"
-                    f"📷 صورة الوجه الأمامي للهوية"
+                    f"📷 صورة الوجه الأمامي للبطاقة"
                 )
             )
 
             await context.bot.send_photo(
                 chat_id=ADMIN_ID,
                 photo=back_file_id,
-                caption="📷 صورة الوجه الخلفي للهوية",
+                caption="📷 صورة الوجه الخلفي للبطاقة",
                 reply_markup=verification_keyboard
             )
 
@@ -7531,6 +7531,7 @@ async def apply_admin_support_action(context, username, action):
         return f"✅ تم فك حجب المستخدم {username} من مراسلة الدعم"
 
     return "❌ إجراء غير معروف"
+
 async def block_support_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id != ADMIN_ID:
         await update.message.reply_text("❌ ليس لديك صلاحية استخدام هذا الأمر")
