@@ -2761,11 +2761,29 @@ def get_data_entry_warning_text(user_id):
     )
 
 
-async def block_menu_buttons_during_data_entry(update: Update, user_id, text):
+async def block_menu_buttons_during_data_entry(update: Update, context, user_id, text):
     if not is_user_in_data_entry_state(user_id):
         return False
 
-    # نسمح بزر الرجوع والإلغاء لأنهما مخصصان للخروج من الحالة
+    state = user_states.get(user_id)
+
+    if isinstance(state, dict):
+        step = state.get("step")
+    else:
+        step = state
+
+    # =========================
+    # أزرار مسموحة حسب الحالة الحالية
+    # =========================
+    allowed_by_state = {
+        "accept_terms": ["✅ موافق", "❌ إلغاء"],
+        "ask_referral": ["دعوة من صديق", "بدون دعوة", "🔙 رجوع"],
+    }
+
+    if step in allowed_by_state and text in allowed_by_state[step]:
+        return False
+
+    # السماح بزر الرجوع والإلغاء العام
     if text in ["🔙 رجوع", "🔙 إلغاء الإرسال"]:
         return False
 
@@ -2773,10 +2791,22 @@ async def block_menu_buttons_during_data_entry(update: Update, user_id, text):
     if text not in get_main_reply_button_texts():
         return False
 
-    await update.message.reply_text(
-          get_data_entry_warning_text(user_id),
-          reply_markup=build_data_entry_back_keyboard()
-           )
+    # حذف رسالة التحذير السابقة إن وجدت
+    last_msg_id = context.user_data.get("last_warning_msg_id")
+
+    if last_msg_id:
+        try:
+            await context.bot.delete_message(chat_id=user_id, message_id=last_msg_id)
+        except Exception as e:
+            print(f"تعذر حذف رسالة التحذير السابقة: {e}")
+
+    sent_msg = await update.message.reply_text(
+        get_data_entry_warning_text(user_id),
+        reply_markup=build_data_entry_back_keyboard()
+    )
+
+    context.user_data["last_warning_msg_id"] = sent_msg.message_id
+
     return True
 
 async def go_back_from_data_entry_state(user_id, context):
@@ -2869,8 +2899,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     tg_username = f"@{user.username}" if user.username else "لا يوجد يوزر نيم ❌"
 
-    if await block_menu_buttons_during_data_entry(update, user_id, text):
-        return
+    if await block_menu_buttons_during_data_entry(update, context, user_id, text):
+      return
     
     # =========================
     # إلغاء عمليات الإرسال/الرد للأدمن
