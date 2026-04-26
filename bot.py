@@ -1513,7 +1513,42 @@ async def auto_update_all_profits(context: ContextTypes.DEFAULT_TYPE):
             print(f"خطأ أثناء تحديث الأرباح للمستخدم {username}: {e}")
 
     if changed:
-        save_data()        
+        save_data()
+
+async def send_unverified_account_reminders(context: ContextTypes.DEFAULT_TYPE):
+    for username in list(users.keys()):
+        try:
+            # تجاهل الحسابات الموثقة
+            if verified_users.get(username, False):
+                continue
+
+            # تجاهل الحسابات المحظورة
+            if is_user_banned(username):
+                continue
+
+            user_id = get_saved_telegram_id(username)
+
+            # إذا لا يوجد Telegram ID محفوظ لا يمكن إرسال الرسالة
+            if not user_id:
+                continue
+
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=(
+                    "⚠️ تنبيه هام\n\n"
+                    "حسابك غير موثق حتى الآن.\n\n"
+                    "بالتالي لن تستطيع سحب أي مبلغ من المنصة حتى يتم توثيق الحساب.\n\n"
+                    "اضغط فورًا على زر:\n"
+                    "🪪 توثيق الحساب\n\n"
+                    "وابدأ عملية التوثيق الآن."
+                ),
+                reply_markup=main_menu_keyboard()
+            )
+
+            await asyncio.sleep(0.05)
+
+        except Exception as e:
+            print(f"خطأ في إرسال تنبيه التوثيق للمستخدم {username}: {e}")                
 
 def get_upgrade_plans(current_plan):
     current_level = PLAN_LEVELS.get(current_plan, 0)
@@ -7432,6 +7467,7 @@ def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.job_queue.run_repeating(check_capital_withdraw_requests, interval=60, first=10)
     app.job_queue.run_repeating(auto_update_all_profits, interval=300, first=15)
+    app.job_queue.run_repeating(send_unverified_account_reminders, interval=1800, first=60)
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("k", k))
