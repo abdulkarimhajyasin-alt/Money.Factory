@@ -5863,6 +5863,30 @@ async def handle_admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
 
     # =========================
 
+    if data == "cancel_delete_my_account":
+        user_id = query.from_user.id
+        username = logged_in_users.get(user_id)
+
+        try:
+            await query.message.delete()
+        except Exception as e:
+            print(f"تعذر حذف رسالة تأكيد حذف الحساب: {e}")
+
+        if username:
+            await context.bot.send_message(
+                chat_id=user_id,
+                text="🏠 تم الرجوع إلى الصفحة الرئيسية",
+                reply_markup=main_menu_keyboard()
+            )
+        else:
+            await context.bot.send_message(
+                chat_id=user_id,
+                text="اختر خيار:",
+                reply_markup=auth_keyboard()
+            )
+
+        return
+
     if data == "confirm_delete_my_account":
         user_id = query.from_user.id
         username = logged_in_users.get(user_id)
@@ -7532,6 +7556,7 @@ async def apply_admin_support_action(context, username, action):
         return f"✅ تم فك حجب المستخدم {username} من مراسلة الدعم"
 
     return "❌ إجراء غير معروف"
+
 async def block_support_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id != ADMIN_ID:
         await update.message.reply_text("❌ ليس لديك صلاحية استخدام هذا الأمر")
