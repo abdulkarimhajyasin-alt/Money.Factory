@@ -1057,67 +1057,151 @@ def build_user_transactions_text(username, limit=10):
 
     return "\n".join(lines)
 
-def build_user_financial_history_text(username, limit=10):
-    deposit_logs = user_deposit_logs.get(username, [])
-    withdraw_logs = user_withdraw_logs.get(username, [])
-
+def build_user_financial_history_text(username, limit=20):
     items = []
+
+    # =========================
+    # 1) الإيداعات المسجلة في السجل
+    # =========================
+    deposit_logs = user_deposit_logs.get(username, [])
 
     for dep in deposit_logs:
         items.append({
             "kind": "deposit",
             "amount": round(float(dep.get("amount", 0)), 2),
             "time": dep.get("time", "بدون وقت"),
-            "status": "approved"
+            "status": dep.get("status", "approved"),
+            "note": dep.get("note", "")
         })
+
+    # =========================
+    # 2) السحوبات المسجلة في السجل
+    # =========================
+    withdraw_logs = user_withdraw_logs.get(username, [])
 
     for wd in withdraw_logs:
         items.append({
             "kind": "withdraw",
             "amount": round(float(wd.get("amount", 0)), 2),
             "time": wd.get("time", "بدون وقت"),
-            "status": wd.get("status", "unknown")
+            "status": wd.get("status", "unknown"),
+            "note": wd.get("note", "")
         })
 
-    if not items:
-        return "📭 لا يوجد لديك سجل إيداعات أو سحوبات حتى الآن"
+    # =========================
+    # 3) طلبات الإيداع المعلقة حاليًا
+    # =========================
+    user_id = get_saved_telegram_id(username)
 
+    if user_id and user_id in pending_deposit_requests:
+        req = pending_deposit_requests[user_id]
+
+        items.append({
+            "kind": "deposit",
+            "amount": round(float(req.get("amount", 0)), 2),
+            "time": req.get("time", now_str()),
+            "status": "pending",
+            "note": f"طلب إيداع قيد المراجعة | النوع: {req.get('type', 'new_deposit')} | الباقة: {req.get('plan', 'غير معروف')}"
+        })
+
+    # =========================
+    # 4) طلبات سحب الأرباح المعلقة حاليًا
+    # =========================
+    if user_id and user_id in pending_withdraw_requests:
+        req = pending_withdraw_requests[user_id]
+
+        items.append({
+            "kind": "withdraw",
+            "amount": round(float(req.get("amount", 0)), 2),
+            "time": req.get("time", now_str()),
+            "status": "pending",
+            "note": f"طلب سحب أرباح قيد المراجعة | الباقة: {req.get('plan', 'غير معروف')}"
+        })
+
+    # =========================
+    # 5) طلب سحب رأس المال وإيقاف الربح
+    # =========================
+    if user_id and user_id in capital_withdraw_requests:
+        req = capital_withdraw_requests[user_id]
+
+        amount = round(float(req.get("amount", 0)), 2)
+        request_time = format_timestamp(req.get("request_time"))
+        due_time = format_timestamp(req.get("due_time"))
+        countdown = get_capital_withdraw_countdown_text(username)
+
+        items.append({
+            "kind": "capital_withdraw",
+            "amount": amount,
+            "time": request_time,
+            "status": "pending",
+            "note": (
+                f"طلب سحب رأس المال وإيقاف الربح\n"
+                f"⏰ موعد الاستحقاق: {due_time}\n"
+                f"⌛ الوقت المتبقي: {countdown}"
+            )
+        })
+
+    # =========================
+    # إذا لا يوجد أي شيء
+    # =========================
+    if not items:
+        return "📭 لا يوجد لديك سجل عمليات حتى الآن"
+
+    # =========================
+    # ترتيب العمليات حسب الوقت
+    # =========================
     def sort_key(item):
         return item.get("time", "")
 
     items = sorted(items, key=sort_key)[-limit:]
 
     lines = [
-        f"📜 سجل الإيداعات والسحوبات",
+        "📜 سجل العمليات المالية",
         f"👤 المستخدم: {username}",
         "➖➖➖➖➖"
     ]
 
     for item in reversed(items):
-        kind = item["kind"]
-        amount = item["amount"]
-        tx_time = item["time"]
-        status = item["status"]
+        kind = item.get("kind")
+        amount = item.get("amount", 0)
+        tx_time = item.get("time", "بدون وقت")
+        status = item.get("status", "unknown")
+        note = item.get("note", "")
+
+        status_text = {
+            "approved": "تمت الموافقة ✅",
+            "rejected": "مرفوض ❌",
+            "pending": "قيد الانتظار ⏳",
+            "unknown": "غير معروف"
+        }.get(status, status)
 
         if kind == "deposit":
             lines.append(
                 f"📥 إيداع\n"
                 f"💰 المبلغ: {amount}$\n"
-                f"📌 الحالة: تمت الموافقة ✅\n"
+                f"📌 الحالة: {status_text}\n"
                 f"🕒 الوقت: {tx_time}\n"
+                f"📝 ملاحظة: {note if note else '---'}\n"
                 f"➖➖➖➖➖"
             )
-        else:
-            status_text = {
-                "approved": "تمت الموافقة ✅",
-                "rejected": "مرفوض ❌"
-            }.get(status, status)
 
+        elif kind == "withdraw":
             lines.append(
-                f"💸 سحب\n"
+                f"💸 سحب أرباح\n"
                 f"💰 المبلغ: {amount}$\n"
                 f"📌 الحالة: {status_text}\n"
                 f"🕒 الوقت: {tx_time}\n"
+                f"📝 ملاحظة: {note if note else '---'}\n"
+                f"➖➖➖➖➖"
+            )
+
+        elif kind == "capital_withdraw":
+            lines.append(
+                f"🏦 سحب رأس المال وإيقاف الربح\n"
+                f"💰 المبلغ: {amount}$\n"
+                f"📌 الحالة: {status_text}\n"
+                f"🕒 وقت الطلب: {tx_time}\n"
+                f"📝 التفاصيل:\n{note}\n"
                 f"➖➖➖➖➖"
             )
 
@@ -5026,7 +5110,8 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "amount": amount,
             "type": "plan_change",
             "old_plan": current_plan,
-            "new_plan": target_plan
+            "new_plan": target_plan,
+            "time": now_str()
         }
         save_data()
 
@@ -5072,7 +5157,8 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "amount": amount,
             "type": "topup_deposit",
             "old_capital": current_capital,
-            "final_capital": final_capital
+            "final_capital": final_capital,
+            "time": now_str()
         }
         save_data()
 
@@ -5113,8 +5199,10 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pending_deposit_requests[user_id] = {
         "username": username,
         "plan": state["plan"],
-        "amount": state["amount"]
-    }
+        "amount": state["amount"],
+        "type": "new_deposit",
+        "time": now_str()
+    }    
     save_data()
 
     keyboard = [
@@ -6523,7 +6611,9 @@ async def handle_admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
             user_deposit_logs.setdefault(username, []).append({
                 "amount": amount,
                 "time": now_str(),
-                "type": "topup_deposit"
+                "status": "approved",
+                "type": "topup_deposit",
+                "note": f"تمت الموافقة على إيداع جديد | رأس المال من {old_capital}$ إلى {new_capital}$"
             })
 
             add_transaction(
@@ -6589,9 +6679,12 @@ async def handle_admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
             user_last_withdraw_time[username] = time.time()
 
             user_deposit_logs.setdefault(username, []).append({
-                "amount": amount,
-                "time": now_str()
-            })
+            "amount": request["amount"],
+            "time": now_str(),
+            "status": "approved",
+            "type": "new_deposit",
+            "note": f"تمت الموافقة على إيداع وتفعيل {request['plan']}"
+             })
 
             add_transaction(username, "plan_change_approved", amount, f"تغيير الباقة من {old_plan} إلى {new_plan}")
 
@@ -6631,7 +6724,10 @@ async def handle_admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
 
         user_deposit_logs.setdefault(username, []).append({
             "amount": request["amount"],
-            "time": now_str()
+            "time": now_str(),
+            "status": "approved",
+            "type": "new_deposit",
+            "note": f"تمت الموافقة على إيداع وتفعيل {request['plan']}"
         })
 
         add_transaction(username, "deposit_approved", request["amount"], f"تفعيل {request['plan']}")
@@ -6690,6 +6786,34 @@ async def handle_admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
          request = pending_deposit_requests.get(user_id)
          request_type = request.get("type", "new_deposit") if request else "new_deposit"
 
+         if request:
+             username = request.get("username")
+             amount = round(float(request.get("amount", 0)), 2)
+             plan_name = request.get("plan", "غير معروف")
+
+             if username:
+                 if request_type == "plan_change":
+                     note = f"تم رفض طلب تغيير الباقة إلى {plan_name}"
+                 elif request_type == "topup_deposit":
+                     note = "تم رفض طلب الإيداع الجديد فوق الرصيد الحالي"
+                 else:
+                     note = f"تم رفض طلب الإيداع للباقة {plan_name}"
+
+                 user_deposit_logs.setdefault(username, []).append({
+                     "amount": amount,
+                     "time": now_str(),
+                     "status": "rejected",
+                     "type": request_type,
+                     "note": note
+                 })
+
+                 add_transaction(
+                     username,
+                     "deposit_rejected",
+                     amount,
+                     note
+                 )
+
          pending_deposit_requests.pop(user_id, None)
          save_data()
 
@@ -6703,7 +6827,7 @@ async def handle_admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
          await context.bot.send_message(
             chat_id=user_id,
             text=reject_text
-             )
+         )
 
          await query.edit_message_caption(caption=reject_text)
          return
@@ -6800,7 +6924,8 @@ async def handle_admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
         user_withdraw_logs.setdefault(username, []).append({
             "amount": amount,
             "time": now_str(),
-            "status": "approved"
+            "status": "approved",
+            "note": "تمت الموافقة على سحب الأرباح"
         })
 
         add_transaction(username, "withdraw_approved", amount, "تمت الموافقة على سحب الأرباح")
@@ -6825,7 +6950,8 @@ async def handle_admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
             user_withdraw_logs.setdefault(username, []).append({
                 "amount": request["amount"],
                 "time": now_str(),
-                "status": "rejected"
+                "status": "rejected",
+                "note": "تم رفض طلب سحب الأرباح من قبل الإدارة"
             })
             add_transaction(username, "withdraw_rejected", request["amount"], "تم رفض طلب سحب الأرباح")
 
@@ -6839,6 +6965,7 @@ async def handle_admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
 
         await query.edit_message_text("❌ تم رفض طلب السحب")
         return
+    
     elif data.startswith("admin_addbalance_"):
         username = data.replace("admin_addbalance_", "", 1)
 
