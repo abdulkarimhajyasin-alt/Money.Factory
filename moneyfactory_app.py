@@ -70,6 +70,7 @@ user_created_time = {}           # username -> وقت إنشاء الحساب
 user_tree_views = {}             # view_id -> بيانات شاشة شجرة المستخدمين
 user_wallet_address = {}          # username -> عنوان المحفظة المحفوظة
 user_wallet_network = {}          # username -> اسم الشبكة المحفوظة
+user_identity_photos = {}          # username -> صور البطاقة الشخصية front/back
 
 pending_profit_capital_activation = {}  # username -> بيانات تفعيل رأس المال الجديد للربح بعد نهاية دورة السحب
 
@@ -337,6 +338,7 @@ def load_data():
     global user_tree_views
     global user_wallet_address
     global user_wallet_network
+    global user_identity_photos
     global pending_profit_capital_activation
 
     data = db_get("data", {})
@@ -379,6 +381,7 @@ def load_data():
     user_tree_views = data.get("user_tree_views", {})
     user_wallet_address = data.get("user_wallet_address", {})
     user_wallet_network = data.get("user_wallet_network", {})
+    user_identity_photos = data.get("user_identity_photos", {})
     pending_profit_capital_activation = data.get("pending_profit_capital_activation", {})
 
     pending_deposit_requests = {
@@ -428,6 +431,7 @@ def save_data():
         "user_tree_views": user_tree_views,
         "user_wallet_address": user_wallet_address,
         "user_wallet_network": user_wallet_network,
+        "user_identity_photos": user_identity_photos,
         "pending_profit_capital_activation": pending_profit_capital_activation,
         "pending_deposit_requests": {str(k): v for k, v in pending_deposit_requests.items()},
         "pending_withdraw_requests": {str(k): v for k, v in pending_withdraw_requests.items()},
@@ -1001,6 +1005,8 @@ def build_admin_user_keyboard(username):
         row2.append(InlineKeyboardButton("✅ فك حظر الدعم", callback_data=f"admin_unblocksupport_{username}"))
     else:
         row2.append(InlineKeyboardButton("🚫 حظر الدعم", callback_data=f"admin_blocksupport_{username}"))
+     
+    row2.append(InlineKeyboardButton("🪪 البطاقة الشخصية", callback_data=f"admin_identity_{username}"))
 
     row3.append(InlineKeyboardButton("➕ إضافة رصيد", callback_data=f"admin_addbalance_{username}"))
     row3.append(InlineKeyboardButton("➖ خصم رصيد", callback_data=f"admin_subbalance_{username}"))
@@ -1687,6 +1693,7 @@ def delete_user_completely(user_id, username):
     user_created_time.pop(username, None)
     user_wallet_address.pop(username, None)
     user_wallet_network.pop(username, None)
+    user_identity_photos.pop(username, None)
 
     # إزالة أي مستخدمين كان هذا الشخص داعيًا لهم
     for invited_username, referrer_username in list(user_referrer.items()):
@@ -5389,6 +5396,12 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "time": now_str(),
             "type": "account_verification"
         }
+        user_identity_photos[username] = {
+           "front_id_file_id": front_id_file_id,
+           "back_id_file_id": back_id_file_id,
+           "updated_at": now_str()
+         }
+
 
         save_data()
 
@@ -5546,6 +5559,11 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "back_id_file_id": back_file_id,
             "time": now_str()
         }
+        user_identity_photos[state["username"]] = {
+            "front_id_file_id": front_file_id,
+            "back_id_file_id": back_file_id,
+            "updated_at": now_str()
+         }
         save_data()
 
         verification_keyboard = InlineKeyboardMarkup([
@@ -7914,6 +7932,69 @@ async def handle_admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
             reply_markup=build_admin_user_keyboard(username)
         )
         return
+    
+    elif data.startswith("admin_identity_"):
+       username = data.replace("admin_identity_", "", 1)
+
+       if username not in users:
+        await query.message.reply_text("❌ المستخدم غير موجود")
+        return
+
+       photos = user_identity_photos.get(username)
+
+       if not photos:
+        # محاولة احتياطية: إذا كان لديه طلب توثيق معلق حاليًا
+        target_user_id = get_saved_telegram_id(username)
+        pending_request = pending_verification_requests.get(target_user_id) if target_user_id else None
+
+        if pending_request:
+            photos = {
+                "front_id_file_id": pending_request.get("front_id_file_id"),
+                "back_id_file_id": pending_request.get("back_id_file_id"),
+                "updated_at": pending_request.get("time", "غير متوفر")
+            }
+
+       if not photos:
+        await query.message.reply_text(
+            f"❌ لا توجد صور بطاقة شخصية محفوظة للمستخدم: {username}\n\n"
+            "ملاحظة: الصور القديمة التي تمت الموافقة عليها قبل هذا التعديل قد لا تكون محفوظة إذا تم حذف طلب التوثيق."
+        )
+        return
+
+       front_photo = photos.get("front_id_file_id")
+       back_photo = photos.get("back_id_file_id")
+       updated_at = photos.get("updated_at", "غير متوفر")
+
+       if not front_photo or not back_photo:
+        await query.message.reply_text("❌ بيانات صور البطاقة غير مكتملة لهذا المستخدم")
+        return
+
+       try:
+        await context.bot.send_photo(
+            chat_id=query.from_user.id,
+            photo=front_photo,
+            caption=(
+                f"🪪 البطاقة الشخصية للمستخدم: {username}\n\n"
+                f"📷 الوجه الأمامي\n"
+                f"🕒 آخر تحديث: {updated_at}"
+            )
+        )
+
+        await context.bot.send_photo(
+            chat_id=query.from_user.id,
+            photo=back_photo,
+            caption=(
+                f"🪪 البطاقة الشخصية للمستخدم: {username}\n\n"
+                f"📷 الوجه الخلفي\n"
+                f"🕒 آخر تحديث: {updated_at}"
+            )
+        )
+
+       except Exception as e:
+        print(f"خطأ في إرسال صور البطاقة الشخصية للأدمن: {e}")
+        await query.message.reply_text("❌ حدث خطأ أثناء إرسال صور البطاقة الشخصية")
+    
+       return
     
     elif data.startswith("admin_openwithdraw_"):
         username = data.replace("admin_openwithdraw_", "", 1)
