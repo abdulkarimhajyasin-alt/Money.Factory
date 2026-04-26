@@ -2561,7 +2561,213 @@ async def apply_admin_status_action(context, username, action):
 
     return "❌ إجراء غير معروف"
 
+# =========================
+# حماية خطوات إدخال البيانات من أزرار القائمة
+# =========================
+def get_main_reply_button_texts():
+    buttons = set()
 
+    for row in main_menu_keyboard().keyboard:
+        for button in row:
+            buttons.add(button.text if hasattr(button, "text") else str(button))
+
+    for row in auth_keyboard().keyboard:
+        for button in row:
+            buttons.add(button.text if hasattr(button, "text") else str(button))
+
+    for row in admin_keyboard().keyboard:
+        for button in row:
+            buttons.add(button.text if hasattr(button, "text") else str(button))
+
+    buttons.update(PLANS.keys())
+
+    buttons.update({
+        "✅ موافق",
+        "❌ إلغاء",
+        "دعوة من صديق",
+        "بدون دعوة",
+        "🔙 رجوع",
+        "🔙 إلغاء الإرسال"
+    })
+
+    return buttons
+
+
+def is_user_in_data_entry_state(user_id):
+    state = user_states.get(user_id)
+
+    if not state:
+        return False
+
+    # حالات نصية أثناء التسجيل
+    if state in [
+        "accept_terms",
+        "ask_referral",
+        "referral_username",
+        "register_username",
+        "register_residence",
+        "login_username"
+    ]:
+        return True
+
+    if not isinstance(state, dict):
+        return False
+
+    step = state.get("step")
+
+    data_entry_steps = [
+        # تسجيل / دخول
+        "register_full_name",
+        "register_username",
+        "register_password",
+        "login_password",
+
+        # التوثيق
+        "verify_full_name",
+        "verify_residence",
+        "verify_id_front",
+        "verify_id_back",
+
+        # تغيير كلمة المرور
+        "change_password_old",
+        "change_password_new",
+        "change_password_confirm",
+
+        # الدعم
+        "support_message",
+
+        # السحب
+        "withdraw_enter_amount",
+        "withdraw_enter_wallet",
+        "withdraw_enter_network",
+
+        # إيداع / تغيير باقة
+        "enter_amount",
+        "topup_enter_amount",
+        "plan_change_enter_amount",
+        "send_proof",
+        "send_topup_proof",
+        "send_plan_change_proof",
+
+        # الأدمن
+        "admin_search_user",
+        "admin_delete_user_search",
+        "admin_reply_support",
+        "admin_send_broadcast",
+        "admin_send_private_message",
+        "admin_send_plan_message",
+        "admin_add_balance_input",
+        "admin_sub_balance_input",
+        "admin_add_wallet_address",
+        "admin_add_wallet_network",
+    ]
+
+    return step in data_entry_steps
+
+
+def get_data_entry_warning_text(user_id):
+    state = user_states.get(user_id)
+
+    if isinstance(state, dict):
+        step = state.get("step")
+    else:
+        step = state
+
+    if step in ["verify_full_name"]:
+        return (
+            "⚠️ أنت الآن داخل عملية توثيق الحساب.\n\n"
+            "يرجى إدخال الاسم والكنية كما هو موضح في الهوية الشخصية، "
+            "أو اضغط 🔙 رجوع لإلغاء الخطوة والعودة."
+        )
+
+    if step in ["verify_residence"]:
+        return (
+            "⚠️ أنت الآن داخل عملية توثيق الحساب.\n\n"
+            "يرجى إدخال مكان الإقامة (الدولة)، "
+            "أو اضغط 🔙 رجوع لإلغاء الخطوة والعودة."
+        )
+
+    if step in ["verify_id_front"]:
+        return (
+            "⚠️ أنت الآن داخل عملية توثيق الحساب.\n\n"
+            "يرجى إرسال صورة الوجه الأمامي للهوية الشخصية، "
+            "أو اضغط 🔙 رجوع لإلغاء الخطوة والعودة."
+        )
+
+    if step in ["verify_id_back"]:
+        return (
+            "⚠️ أنت الآن داخل عملية توثيق الحساب.\n\n"
+            "يرجى إرسال صورة الوجه الخلفي للهوية الشخصية، "
+            "أو اضغط 🔙 رجوع لإلغاء الخطوة والعودة."
+        )
+
+    if step in ["withdraw_enter_amount", "withdraw_enter_wallet", "withdraw_enter_network"]:
+        return (
+            "⚠️ لديك عملية سحب قيد الإدخال.\n\n"
+            "يرجى إكمال البيانات المطلوبة أو اضغط 🔙 رجوع للعودة."
+        )
+
+    if step in ["change_password_old", "change_password_new", "change_password_confirm"]:
+        return (
+            "⚠️ أنت الآن داخل عملية تغيير كلمة المرور.\n\n"
+            "يرجى إكمال الخطوة المطلوبة أو اضغط 🔙 رجوع للعودة."
+        )
+
+    if step == "support_message":
+        return (
+            "⚠️ أنت الآن داخل مراسلة الدعم.\n\n"
+            "اكتب رسالتك أو أرسل صورة، أو اضغط 🔙 رجوع للعودة."
+        )
+
+    if step in ["enter_amount", "topup_enter_amount", "plan_change_enter_amount"]:
+        return (
+            "⚠️ لديك عملية إيداع أو اشتراك قيد الإدخال.\n\n"
+            "يرجى إدخال المبلغ المطلوب أو اضغط 🔙 رجوع للعودة."
+        )
+
+    if step in ["send_proof", "send_topup_proof", "send_plan_change_proof"]:
+        return (
+            "⚠️ بانتظار إثبات الدفع.\n\n"
+            "يرجى إرسال صورة إثبات الدفع أو اضغط 🔙 رجوع للعودة."
+        )
+
+    if step in [
+        "admin_search_user",
+        "admin_delete_user_search",
+        "admin_reply_support",
+        "admin_send_broadcast",
+        "admin_send_private_message",
+        "admin_send_plan_message",
+        "admin_add_balance_input",
+        "admin_sub_balance_input",
+        "admin_add_wallet_address",
+        "admin_add_wallet_network",
+    ]:
+        return (
+            "⚠️ أنت الآن داخل عملية إدارية قيد الإدخال.\n\n"
+            "يرجى إكمال المطلوب أو اضغط 🔙 إلغاء الإرسال للعودة."
+        )
+
+    return (
+        "⚠️ لديك عملية قيد الإدخال حاليًا.\n\n"
+        "يرجى إكمال الخطوة المطلوبة أو اضغط 🔙 رجوع للعودة."
+    )
+
+
+async def block_menu_buttons_during_data_entry(update: Update, user_id, text):
+    if not is_user_in_data_entry_state(user_id):
+        return False
+
+    # نسمح بزر الرجوع والإلغاء لأنهما مخصصان للخروج من الحالة
+    if text in ["🔙 رجوع", "🔙 إلغاء الإرسال"]:
+        return False
+
+    # نحجب فقط أزرار القوائم، أما النص العادي نتركه للحالة الحالية
+    if text not in get_main_reply_button_texts():
+        return False
+
+    await update.message.reply_text(get_data_entry_warning_text(user_id))
+    return True
 # =========================
 # معالجة الرسائل
 # =========================
@@ -2571,7 +2777,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip() if update.message.text else ""
 
     tg_username = f"@{user.username}" if user.username else "لا يوجد يوزر نيم ❌"
-        # =========================
+
+    if await block_menu_buttons_during_data_entry(update, user_id, text):
+        return
+    
+    # =========================
     # إلغاء عمليات الإرسال/الرد للأدمن
     # =========================
     if user_id == ADMIN_ID and text == "🔙 إلغاء الإرسال":
@@ -2741,6 +2951,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(
                 "💼 أدخل عنوان المحفظة التي تريد السحب إليها:",
                 reply_markup=ReplyKeyboardMarkup([["🔙 رجوع"]], resize_keyboard=True)
+            )
+            return
+        
+        # الرجوع من خطوات توثيق الحساب
+        elif isinstance(state, dict) and state.get("step") in [
+            "verify_full_name",
+            "verify_residence",
+            "verify_id_front",
+            "verify_id_back"
+        ]:
+            user_states.pop(user_id, None)
+            await update.message.reply_text(
+                "تم الرجوع.",
+                reply_markup=main_menu_keyboard()
             )
             return
 
