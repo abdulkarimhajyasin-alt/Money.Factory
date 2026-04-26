@@ -47,7 +47,7 @@ chat_ids = []
 logged_in_users = {}
 pending_verification_requests = {}   # طلبات التوثيق بانتظار موافقة الأدمن
 user_residence = {}                  # مكان إقامة المستخدم
-user_full_name = {}                  # الاسم والكنية كما في الهوية
+user_full_name = {}                  # الاسم والكنية كما في البطاقة الشخصية
 verified_users = {}                  # هل الحساب موثق أم لا
 user_statuses = {}   # active / frozen / banned
 support_blocked_users = {}   # username -> True/False
@@ -127,7 +127,7 @@ TERMS_TEXT = """📜 شروط الاستخدام وسياسة المنصة
 - يحق للإدارة تجميد أو حظر أو حذف أي حساب مخالف أو وهمي أو يستخدم بيانات غير صحيحة.
 
 6️⃣ التوثيق والتحقق
-- يحق للإدارة طلب توثيق الهوية أو أي معلومات إضافية قبل تفعيل الحساب أو تنفيذ بعض العمليات.
+- يحق للإدارة طلب توثيق البطاقة الشخصية أو أي معلومات إضافية قبل تفعيل الحساب أو تنفيذ بعض العمليات.
 - أي بيانات أو وثائق غير صحيحة قد تؤدي إلى رفض الطلب أو إيقاف الحساب.
 
 7️⃣ الدعم الفني
@@ -2861,7 +2861,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
       full_name = text.strip()
 
       if len(full_name) < 5:
-          await update.message.reply_text("❌ يرجى إدخال الاسم والكنية بشكل صحيح كما في الهوية")
+          await update.message.reply_text("❌ يرجى إدخال الاسم والكنية بشكل صحيح كما في البطاقة الشخصية")
           return
 
       user_states[user_id] = {
@@ -3131,7 +3131,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
            "step": "verify_full_name"
        }
 
-       await update.message.reply_text("أدخل الاسم والكنية كما هو موضح في الهوية الشخصية:")
+       await update.message.reply_text("أدخل الاسم والكنية كما هو موضح في البطاقة الشخصية:")
        return
     
     elif isinstance(user_states.get(user_id), dict) and user_states[user_id].get("step") == "verify_full_name":
