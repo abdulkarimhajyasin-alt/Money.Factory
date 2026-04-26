@@ -1306,6 +1306,13 @@ def build_capital_withdraw_confirm_keyboard():
         ]
     ])
 
+def build_data_entry_back_keyboard():
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("🔙 رجوع", callback_data="data_entry_back")
+        ]
+    ])
+
 def build_delete_account_confirm_keyboard():
     return InlineKeyboardMarkup([
         [
@@ -2766,8 +2773,92 @@ async def block_menu_buttons_during_data_entry(update: Update, user_id, text):
     if text not in get_main_reply_button_texts():
         return False
 
-    await update.message.reply_text(get_data_entry_warning_text(user_id))
+    await update.message.reply_text(
+          get_data_entry_warning_text(user_id),
+          reply_markup=build_data_entry_back_keyboard()
+           )
     return True
+
+async def go_back_from_data_entry_state(user_id, context):
+    username = logged_in_users.get(user_id)
+    state = user_states.get(user_id)
+
+    if not state:
+        await context.bot.send_message(
+            chat_id=user_id,
+            text="🏠 تم الرجوع إلى الصفحة الرئيسية",
+            reply_markup=main_menu_keyboard() if username else auth_keyboard()
+        )
+        return
+
+    step = state.get("step") if isinstance(state, dict) else state
+
+    # =========================
+    # رجوع خطوات توثيق الحساب
+    # =========================
+    if step == "verify_full_name":
+        user_states.pop(user_id, None)
+        await context.bot.send_message(
+            chat_id=user_id,
+            text="🏠 تم الرجوع إلى الصفحة الرئيسية",
+            reply_markup=main_menu_keyboard()
+        )
+        return
+
+    if step == "verify_residence":
+        user_states[user_id] = {
+            "step": "verify_full_name"
+        }
+        await context.bot.send_message(
+            chat_id=user_id,
+            text="أدخل الاسم والكنية كما هو موضح في الهوية الشخصية:",
+            reply_markup=main_menu_keyboard()
+        )
+        return
+
+    if step == "verify_id_front":
+        old_full_name = state.get("full_name", "")
+
+        user_states[user_id] = {
+            "step": "verify_residence",
+            "full_name": old_full_name
+        }
+
+        await context.bot.send_message(
+            chat_id=user_id,
+            text="أدخل مكان اقامتك (الدولة):",
+            reply_markup=main_menu_keyboard()
+        )
+        return
+
+    if step == "verify_id_back":
+        old_full_name = state.get("full_name", "")
+        old_residence = state.get("residence", "")
+
+        user_states[user_id] = {
+            "step": "verify_id_front",
+            "full_name": old_full_name,
+            "residence": old_residence
+        }
+
+        await context.bot.send_message(
+            chat_id=user_id,
+            text="📷 قم الآن برفع صورة واضحة للوجه الأمامي للهوية الشخصية:",
+            reply_markup=main_menu_keyboard()
+        )
+        return
+
+    # =========================
+    # رجوع عام لباقي حالات الإدخال
+    # =========================
+    user_states.pop(user_id, None)
+
+    await context.bot.send_message(
+        chat_id=user_id,
+        text="🏠 تم الرجوع إلى الصفحة الرئيسية",
+        reply_markup=main_menu_keyboard() if username else auth_keyboard()
+    )
+
 # =========================
 # معالجة الرسائل
 # =========================
@@ -2806,6 +2897,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # =========================
     if text == "🔙 رجوع":
         state = user_states.get(user_id)
+
+        if isinstance(state, dict) and state.get("step") in [
+            "verify_full_name",
+            "verify_residence",
+            "verify_id_front",
+            "verify_id_back"
+        ]:
+            await go_back_from_data_entry_state(user_id, context)
+            return
 
         # الرجوع من شاشة اختيار طريقة الوصول
         if state == "ask_referral":
@@ -5803,6 +5903,17 @@ async def handle_admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
         
 
     data = query.data
+
+    if data == "data_entry_back":
+        user_id = query.from_user.id
+
+        try:
+            await query.message.delete()
+        except Exception as e:
+            print(f"تعذر حذف رسالة تنبيه حالة الإدخال: {e}")
+
+        await go_back_from_data_entry_state(user_id, context)
+        return
 
     # =========================
     # حماية صارمة لأزرار الأدمن
