@@ -7577,7 +7577,7 @@ def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.job_queue.run_repeating(check_capital_withdraw_requests, interval=60, first=10)
     app.job_queue.run_repeating(auto_update_all_profits, interval=300, first=15)
-    app.job_queue.run_repeating(send_unverified_account_reminders, interval=1800, first=60)
+    app.job_queue.run_repeating(send_unverified_account_reminders, interval=3600, first=60)
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("k", k))
