@@ -752,6 +752,9 @@ def is_user_banned(username):
 def is_user_frozen(username):
     return get_user_status(username) == "frozen"
 
+def is_user_verified(username):
+    return bool(verified_users.get(username, False))
+
 def get_withdraw_interval_days(username):
     plan_name = user_plans.get(username)
     if not plan_name or plan_name not in PLANS:
@@ -1221,6 +1224,14 @@ def build_my_plan_text(username, user_id):
     min_withdraw = get_min_withdraw_amount(username)
     verification_text = "تم التحقق ✅" if verified_users.get(username, False) else "غير موثق ❌"
 
+    withdraw_verification_warning = ""
+    if not is_user_verified(username):
+        withdraw_verification_warning = (
+            "⚠️ تنبيه مهم:\n"
+            "حسابك غير موثق، ولن تستطيع سحب أي مبلغ حتى يتم توثيق الحساب.\n"
+            "اضغط على زر 🪪 توثيق الحساب وابدأ التوثيق الآن.\n"
+        )
+
     if plan in [None, "NONE"]:
         return "❌ لا توجد لديك باقة مفعلة حالياً"
 
@@ -1262,7 +1273,8 @@ def build_my_plan_text(username, user_id):
     return (
     f"📦 باقتك الحالية: {plan}\n"
     f"📌 حالة الحساب: {get_status_text(username)} | {verification_text}\n"
-        f"💰 رأس المال: {capital}$\n"
+    f"{withdraw_verification_warning}"
+    f"💰 رأس المال: {capital}$\n"
     f"📊 رأس المال المعتمد حاليًا لحساب الأرباح: {profit_capital_text}\n"
     f"📈 الرصيد الحالي: {balance}$\n"
     f"💵 الأرباح القابلة للسحب: {profit_only}$\n"
@@ -4377,6 +4389,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if is_user_frozen(username):
             await update.message.reply_text("⚠️ حسابك مجمد ماليًا، ولا يمكن تنفيذ هذه العملية حاليًا")
             return
+        
+        if not is_user_verified(username):
+            await update.message.reply_text(
+                "⛔ لا يمكنك طلب سحب رأس المال حاليًا\n\n"
+                "حسابك غير موثق حتى الآن.\n"
+                "يجب توثيق الحساب أولًا قبل السماح بأي عملية سحب.\n\n"
+                "اضغط على زر:\n"
+                "🪪 توثيق الحساب\n\n"
+                "وابدأ عملية التوثيق الآن.",
+                reply_markup=main_menu_keyboard()
+            )
+            return
 
         if user_plans.get(username) in [None, "NONE"]:
             await update.message.reply_text("❌ لا توجد لديك باقة مفعلة حالياً")
@@ -4421,6 +4445,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if is_user_frozen(username):
             await update.message.reply_text("⚠️ حسابك مجمد ماليًا، ولا يمكن تنفيذ السحب حاليًا")
+            return
+        
+        if not is_user_verified(username):
+            await update.message.reply_text(
+                "⛔ لا يمكنك سحب الأرباح حاليًا\n\n"
+                "حسابك غير موثق حتى الآن.\n"
+                "يجب توثيق الحساب أولًا قبل السماح بأي عملية سحب.\n\n"
+                "اضغط على زر:\n"
+                "🪪 توثيق الحساب\n\n"
+                "وابدأ عملية التوثيق الآن.",
+                reply_markup=main_menu_keyboard()
+            )
             return
 
         if user_plans.get(username) in [None, "NONE"]:
@@ -4479,6 +4515,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_states.pop(user_id, None)
             await update.message.reply_text("يجب تسجيل الدخول أولاً ❌", reply_markup=auth_keyboard())
             return
+        
+        if not is_user_verified(username):
+            user_states.pop(user_id, None)
+            await update.message.reply_text(
+                "⛔ تم إلغاء عملية السحب\n\n"
+                "حسابك غير موثق حتى الآن.\n"
+                "يجب توثيق الحساب أولًا قبل السماح بأي عملية سحب.",
+                reply_markup=main_menu_keyboard()
+            )
+            return
 
         try:
             amount = float(text)
@@ -4533,6 +4579,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     elif isinstance(user_states.get(user_id), dict) and user_states[user_id].get("step") == "withdraw_enter_wallet":
+
+        username = logged_in_users.get(user_id)
+
+        if not username:
+            user_states.pop(user_id, None)
+            await update.message.reply_text("يجب تسجيل الدخول أولاً ❌", reply_markup=auth_keyboard())
+            return
+
+        if not is_user_verified(username):
+            user_states.pop(user_id, None)
+            await update.message.reply_text(
+                "⛔ تم إلغاء عملية السحب\n\n"
+                "حسابك غير موثق حتى الآن.\n"
+                "يجب توثيق الحساب أولًا قبل السماح بأي عملية سحب.",
+                reply_markup=main_menu_keyboard()
+            )
+            return
+
         wallet_address = text.strip()
 
         if not wallet_address:
@@ -4558,6 +4622,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not username:
             user_states.pop(user_id, None)
             await update.message.reply_text("يجب تسجيل الدخول أولاً ❌", reply_markup=auth_keyboard())
+            return
+        
+        if not is_user_verified(username):
+            user_states.pop(user_id, None)
+            await update.message.reply_text(
+                "⛔ تم إلغاء عملية السحب\n\n"
+                "حسابك غير موثق حتى الآن.\n"
+                "يجب توثيق الحساب أولًا قبل السماح بأي عملية سحب.",
+                reply_markup=main_menu_keyboard()
+            )
             return
 
         network_name = text.strip()
@@ -5961,6 +6035,15 @@ async def handle_admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
         if not username:
             await query.edit_message_text("يجب تسجيل الدخول أولاً ❌")
             return
+        
+        if not is_user_verified(username):
+            await query.edit_message_text(
+                "⛔ لا يمكنك تأكيد طلب سحب رأس المال\n\n"
+                "حسابك غير موثق حتى الآن.\n"
+                "يجب توثيق الحساب أولًا قبل السماح بأي عملية سحب.\n\n"
+                "اضغط على زر 🪪 توثيق الحساب من لوحة المستخدم وابدأ التوثيق."
+            )
+            return
 
         if user_id in capital_withdraw_requests:
             await query.edit_message_text(
@@ -6033,6 +6116,14 @@ async def handle_admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
             capital_withdraw_requests.pop(user_id, None)
             save_data()
             await query.edit_message_text("❌ المستخدم غير موجود، تم حذف الطلب")
+            return
+        
+        if not is_user_verified(username):
+            await query.edit_message_text(
+                "❌ لا يمكن تأكيد دفع سحب رأس المال\n\n"
+                "حساب المستخدم غير موثق حتى الآن.\n"
+                "يجب توثيق الحساب قبل تنفيذ أي عملية سحب."
+            )
             return
 
         # تصفير البيانات المالية
@@ -6879,6 +6970,25 @@ async def handle_admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
 
         username = request["username"]
         ensure_user_defaults(username)
+
+        if not is_user_verified(username):
+            pending_withdraw_requests.pop(user_id, None)
+            save_data()
+
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=(
+                    "❌ تم رفض طلب السحب تلقائيًا\n\n"
+                    "حسابك غير موثق حتى الآن.\n"
+                    "يجب توثيق الحساب أولًا قبل السماح بأي عملية سحب.\n\n"
+                    "اضغط على زر 🪪 توثيق الحساب وابدأ التوثيق الآن."
+                )
+            )
+
+            await query.edit_message_text(
+                "❌ تم رفض طلب السحب لأن حساب المستخدم غير موثق"
+            )
+            return
 
         if is_user_frozen(username) or is_user_banned(username):
             pending_withdraw_requests.pop(user_id, None)
