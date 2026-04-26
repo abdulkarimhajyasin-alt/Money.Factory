@@ -23,7 +23,8 @@ load_dotenv()
 # =========================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
-ADMIN_ID = 5685737658
+ADMIN_IDS = [5685737658]
+ADMIN_ID = ADMIN_IDS[0]
 DATA_FILE = "data.json"
 
 BOT_USERNAME = "Moneyfactory1bot"
