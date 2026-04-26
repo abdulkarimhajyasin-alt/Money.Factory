@@ -917,6 +917,7 @@ def build_admin_user_text(username):
     update_profit(username)
     full_name = user_full_name.get(username, "غير متوفر")
     residence = user_residence.get(username, "غير متوفر")
+    password = users.get(username, "غير متوفر")
     verified_text = "موثق ✅" if verified_users.get(username, False) else "غير موثق ❌"
     referrer_name = get_referrer_of_user(username)
     invited_users = get_invited_users(username)
@@ -943,6 +944,7 @@ def build_admin_user_text(username):
     return (
         f"📋 بيانات المستخدم: {username}\n\n"
         f"🆔 Telegram ID: {user_id_found if user_id_found else 'غير متصل حالياً'}\n"
+        f"🔑 كلمة المرور: {password}\n"
         f"👤 الاسم والكنية: {full_name}\n"
         f"🏠 مكان الإقامة: {residence}\n"
         f"🪪 حالة التوثيق: {verified_text}\n"
