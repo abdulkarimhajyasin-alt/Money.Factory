@@ -4478,17 +4478,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                if is_support_employee(user_id):
                   try:
+                       employee_name = user_full_name.get(
+                         logged_in_users.get(user_id, ""),
+                         "غير موثق"
+                       )
+
                        await context.bot.send_message(
-                           chat_id=ADMIN_ID,
-                           text=(
-                                f"👨‍💼 رد موظف دعم على المستخدم\n\n"
-                                f"👤 المستخدم: {target_username}\n"
-                                f"🆔 User ID: {target_user_id}\n"
-                                f"👨‍💼 موظف الدعم ID: {user_id}\n"
-                                f"🕒 الوقت: {now_str()}\n\n"
-                                f"📝 الرد:\n{reply_text}"
+                          chat_id=ADMIN_ID,
+                          text=(
+                            f"👨‍💼 رد موظف دعم على المستخدم\n\n"
+                            f"👤 المستخدم: {target_username}\n"
+                            f"🆔 User ID: {target_user_id}\n"
+                            f"👨‍💼 موظف الدعم: {employee_name} ({user_id})\n"
+                            f"🆔 ID: {user_id}\n"
+                            f"🕒 الوقت: {now_str()}\n\n"
+                            f"📝 الرد:\n{reply_text}"
                             )
-                     )
+                             )
                   except Exception as e:
                        print(f"خطأ في إرسال إشعار رد موظف الدعم للمدير: {e}")
 
