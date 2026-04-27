@@ -26,6 +26,14 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
 ADMIN_IDS = [5685737658]
 ADMIN_ID = ADMIN_IDS[0]
+
+# =========================
+# موظفو الدعم فقط
+# أضف Telegram User ID لكل موظف دعم هنا
+# الموظف يبقى مستخدمًا عاديًا ولا يحصل على صلاحيات أدمن
+# =========================
+SUPPORT_EMPLOYEE_IDS = []
+
 DATA_FILE = "data.json"
 
 BOT_USERNAME = "Moneyfactory1bot"
@@ -63,6 +71,11 @@ referral_bonus_paid = {}    # username -> True/False
 capital_withdraw_requests = {}   # user_id -> بيانات طلب سحب رأس المال
 stopped_profit_users = {}        # username -> True/False
 support_waiting_reply = {}       # username -> True/False
+
+support_employees_enabled = False   # تشغيل/إيقاف موظفي الدعم
+support_claims = {}                 # username -> {"employee_id": int, "expires_at": timestamp}
+support_message_copies = {}         # user_id -> نسخ رسائل الدعم المرسلة للمدير والموظفين
+
 admin_sent_batches = {}          # batch_id -> بيانات آخر دفعات الإرسال للأدمن
 admin_last_batch_id = None       # آخر batch تم إرسالها
 deleted_accounts_log = []        # سجل الحسابات المحذوفة
@@ -332,7 +345,8 @@ def load_data():
     global user_referrer, referral_bonus_paid
     global user_first_deposit_time, user_last_withdraw_time
     global capital_withdraw_requests, stopped_profit_users
-    global support_waiting_reply, admin_sent_batches, admin_last_batch_id
+    global support_waiting_reply, support_employees_enabled, support_claims, support_message_copies
+    global admin_sent_batches, admin_last_batch_id
     global deleted_accounts_log
     global manual_withdraw_open
     global user_created_time
@@ -374,6 +388,9 @@ def load_data():
 
     stopped_profit_users = data.get("stopped_profit_users", {})
     support_waiting_reply = data.get("support_waiting_reply", {})
+    support_employees_enabled = data.get("support_employees_enabled", False)
+    support_claims = data.get("support_claims", {})
+    support_message_copies = data.get("support_message_copies", {})
     admin_sent_batches = data.get("admin_sent_batches", {})
     admin_last_batch_id = data.get("admin_last_batch_id", None)
     deleted_accounts_log = data.get("deleted_accounts_log", [])
@@ -424,6 +441,9 @@ def save_data():
         "capital_withdraw_requests": {str(k): v for k, v in capital_withdraw_requests.items()},
         "stopped_profit_users": stopped_profit_users,
         "support_waiting_reply": support_waiting_reply,
+        "support_employees_enabled": support_employees_enabled,
+        "support_claims": support_claims,
+        "support_message_copies": support_message_copies,
         "admin_sent_batches": admin_sent_batches,
         "admin_last_batch_id": admin_last_batch_id,
         "deleted_accounts_log": deleted_accounts_log,
@@ -448,6 +468,170 @@ def is_support_blocked(username):
 
 def get_support_status_text(username):
     return "محجوب من الدعم 🚫" if is_support_blocked(username) else "مسموح له بالدعم ✅"
+
+# =========================
+# نظام موظفي الدعم
+# =========================
+def is_support_employee(user_id):
+    try:
+        return int(user_id) in [int(x) for x in SUPPORT_EMPLOYEE_IDS]
+    except:
+        return False
+
+
+def is_support_operator(user_id):
+    try:
+        return int(user_id) == int(ADMIN_ID) or is_support_employee(user_id)
+    except:
+        return False
+
+
+def get_support_operator_text(user_id):
+    if int(user_id) == int(ADMIN_ID):
+        return "المدير"
+    if is_support_employee(user_id):
+        return "موظف دعم"
+    return "غير مصرح"
+
+
+def get_support_employees_status_text():
+    return "مفعّل ✅" if support_employees_enabled else "متوقف ⛔"
+
+
+def cleanup_expired_support_claim(username):
+    claim = support_claims.get(username)
+
+    if not claim:
+        return
+
+    expires_at = float(claim.get("expires_at", 0))
+
+    if time.time() >= expires_at:
+        support_claims.pop(username, None)
+        save_data()
+
+
+def has_active_support_claim(username):
+    cleanup_expired_support_claim(username)
+    return username in support_claims
+
+
+def get_support_claim_employee_id(username):
+    if not has_active_support_claim(username):
+        return None
+
+    try:
+        return int(support_claims[username].get("employee_id"))
+    except:
+        return None
+
+
+def claim_support_user(username, employee_id):
+    support_claims[username] = {
+        "employee_id": int(employee_id),
+        "expires_at": time.time() + (15 * 60)
+    }
+    save_data()
+
+
+def build_support_reply_keyboard(user_id):
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("✉️ رد على المستخدم", callback_data=f"reply_support_{user_id}")]
+    ])
+
+
+def get_support_recipients_for_user(username):
+    recipients = [int(ADMIN_ID)]
+
+    if support_employees_enabled:
+        if has_active_support_claim(username):
+            employee_id = get_support_claim_employee_id(username)
+            if employee_id:
+                recipients.append(int(employee_id))
+        else:
+            for employee_id in SUPPORT_EMPLOYEE_IDS:
+                try:
+                    recipients.append(int(employee_id))
+                except:
+                    pass
+
+    unique_recipients = []
+    for recipient_id in recipients:
+        if recipient_id not in unique_recipients:
+            unique_recipients.append(recipient_id)
+
+    return unique_recipients
+
+
+async def delete_support_message_from_other_employees(context, target_user_id, keep_employee_id):
+    copies = support_message_copies.get(str(target_user_id), [])
+
+    for item in copies:
+        try:
+            chat_id = int(item.get("chat_id"))
+            message_id = int(item.get("message_id"))
+            role = item.get("role", "")
+
+            if role == "employee" and chat_id != int(keep_employee_id):
+                await context.bot.delete_message(
+                    chat_id=chat_id,
+                    message_id=message_id
+                )
+        except Exception as e:
+            print(f"تعذر حذف نسخة رسالة الدعم من موظف آخر: {e}")
+
+
+async def send_support_text_to_operators(context, target_user_id, username, message_text, reply_markup):
+    sent_copies = []
+
+    for recipient_id in get_support_recipients_for_user(username):
+        try:
+            sent_msg = await context.bot.send_message(
+                chat_id=recipient_id,
+                text=message_text,
+                reply_markup=reply_markup
+            )
+
+            sent_copies.append({
+                "chat_id": int(recipient_id),
+                "message_id": sent_msg.message_id,
+                "role": "manager" if int(recipient_id) == int(ADMIN_ID) else "employee"
+            })
+
+            await asyncio.sleep(0.05)
+
+        except Exception as e:
+            print(f"خطأ في إرسال رسالة الدعم إلى {recipient_id}: {e}")
+
+    support_message_copies[str(target_user_id)] = sent_copies
+    save_data()
+
+
+async def send_support_photo_to_operators(context, target_user_id, username, photo_file_id, caption_text, reply_markup):
+    sent_copies = []
+
+    for recipient_id in get_support_recipients_for_user(username):
+        try:
+            sent_msg = await context.bot.send_photo(
+                chat_id=recipient_id,
+                photo=photo_file_id,
+                caption=caption_text,
+                reply_markup=reply_markup
+            )
+
+            sent_copies.append({
+                "chat_id": int(recipient_id),
+                "message_id": sent_msg.message_id,
+                "role": "manager" if int(recipient_id) == int(ADMIN_ID) else "employee"
+            })
+
+            await asyncio.sleep(0.05)
+
+        except Exception as e:
+            print(f"خطأ في إرسال صورة الدعم إلى {recipient_id}: {e}")
+
+    support_message_copies[str(target_user_id)] = sent_copies
+    save_data()
 
 def ensure_user_defaults(username):
     if username not in user_statuses:
@@ -1958,6 +2142,12 @@ def auth_keyboard():
 
 
 def admin_keyboard():
+    support_employee_button = (
+        "⛔ إيقاف موظفي الدعم"
+        if support_employees_enabled
+        else "👨‍💼 تشغيل موظفي الدعم"
+    )
+
     keyboard = [
         ["📥 طلبات الإيداع", "💸 طلبات السحب"],
         ["🏦 طلبات سحب رأس المال", "🗑 سجل الحسابات المحذوفة"],
@@ -1967,6 +2157,7 @@ def admin_keyboard():
         ["📢 إرسال رسالة للجميع", "📨 إرسال رسالة حسب الباقة"],
         ["📂 فلترة المستخدمين", "📈 إحصائيات متقدمة"],
         ["🔍 بحث عن مستخدم", "🗑 حذف مستخدم"],
+        [support_employee_button],
         ["🔙 رجوع"]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
@@ -3050,9 +3241,23 @@ async def go_back_from_data_entry_state(user_id, context):
 # معالجة الرسائل
 # =========================
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    global support_employees_enabled
+
     user = update.message.from_user
     user_id = user.id
     text = update.message.text.strip() if update.message.text else ""
+
+    if user_id == ADMIN_ID and text in ["👨‍💼 تشغيل موظفي الدعم", "⛔ إيقاف موظفي الدعم"]:
+        support_employees_enabled = not support_employees_enabled
+        save_data()
+
+        await update.message.reply_text(
+            f"✅ تم تحديث حالة موظفي الدعم\n\n"
+            f"👨‍💼 الحالة الحالية: {get_support_employees_status_text()}",
+            reply_markup=admin_keyboard()
+        )
+        return
 
     if bot_maintenance_mode and user_id != ADMIN_ID:
         await update.message.reply_text(
@@ -3070,7 +3275,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # =========================
     # إلغاء عمليات الإرسال/الرد للأدمن
     # =========================
-    if user_id == ADMIN_ID and text == "🔙 إلغاء الإرسال":
+    if is_support_operator(user_id) and text == "🔙 إلغاء الإرسال":
         current_state = user_states.get(user_id)
 
         cancellable_steps = [
@@ -3084,7 +3289,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_states.pop(user_id, None)
             await update.message.reply_text(
                 "✅ تم إلغاء عملية الإرسال",
-                reply_markup=admin_keyboard()
+                reply_markup=admin_keyboard() if user_id == ADMIN_ID else main_menu_keyboard()
             )
             return
         # =========================
@@ -3785,7 +3990,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
              await update.message.reply_text("🚫 تم منعك من مراسلة الدعم")
              return
 
-         if support_waiting_reply.get(username, False):
+         if support_waiting_reply.get(username, False) and not has_active_support_claim(username):
              await update.message.reply_text(
                  "⏳ لا يمكنك إرسال رسالة جديدة إلى الدعم الآن\n"
                  "لقد أرسلت رسالة بالفعل وبانتظار رد الإدارة"
@@ -3815,7 +4020,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("🚫 تم منعك من مراسلة الدعم")
             return
 
-        if support_waiting_reply.get(username, False):
+        if support_waiting_reply.get(username, False) and not has_active_support_claim(username):
             user_states.pop(user_id, None)
             await update.message.reply_text(
                 "⏳ لا يمكنك إرسال رسالة جديدة إلى الدعم الآن\n"
@@ -3840,29 +4045,31 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         profit_only = get_user_profit_only(username)
 
         try:
-            support_keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton("✉️ رد على المستخدم", callback_data=f"reply_support_{user_id}")]
-            ])
+            support_keyboard = build_support_reply_keyboard(user_id)
 
-            await context.bot.send_message(
-                chat_id=ADMIN_ID,
-                text=(
-                    f"📩 رسالة دعم جديدة\n\n"
-                    f"👤 الاسم داخل البوت: {username}\n"
-                    f"🙍 الاسم الأول: {tg_name}\n"
-                    f"📱 يوزر تيليغرام: {tg_username_text}\n"
-                    f"🆔 Telegram ID: {user_id}\n"
-                    f"📌 حالة الحساب: {get_status_text(username)}\n"
-                    f"📦 الباقة: {plan}\n"
-                    f"💰 رأس المال: {capital}$\n"
-                    f"📈 الرصيد الحالي: {balance}$\n"
-                    f"💵 الأرباح فقط: {profit_only}$\n"
-                    f"🕒 الوقت: {now_str()}\n"
-                    f"📝 النوع: نص\n\n"
-                    f"📝 محتوى الرسالة:\n{support_text}"
-                ),
+            support_message_text = (
+              f"📩 رسالة دعم جديدة\n\n"
+              f"👤 الاسم داخل البوت: {username}\n"
+              f"🙍 الاسم الأول: {tg_name}\n"
+              f"📱 يوزر تيليغرام: {tg_username_text}\n"
+              f"🆔 Telegram ID: {user_id}\n"
+              f"📌 حالة الحساب: {get_status_text(username)}\n"
+              f"📦 الباقة: {plan}\n"
+              f"💰 رأس المال: {capital}$\n"
+              f"📈 الرصيد الحالي: {balance}$\n"
+              f"💵 الأرباح فقط: {profit_only}$\n"
+              f"🕒 الوقت: {now_str()}\n"
+              f"📝 النوع: نص\n\n"
+              f"📝 محتوى الرسالة:\n{support_text}"
+                )
+
+            await send_support_text_to_operators(
+                context=context,
+                target_user_id=user_id,
+                username=username,
+                message_text=support_message_text,
                 reply_markup=support_keyboard
-            )
+                  )
 
             add_transaction(username, "support_message", 0, f"أرسل رسالة دعم نصية: {support_text[:80]}")
             support_waiting_reply[username] = True
@@ -4225,7 +4432,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # -------------------------
     # رد الأدمن على المستخدم
     # -------------------------
-    elif user_id == ADMIN_ID and isinstance(user_states.get(user_id), dict) and user_states[user_id].get("step") == "admin_reply_support":
+    elif is_support_operator(user_id) and isinstance(user_states.get(user_id), dict) and user_states[user_id].get("step") == "admin_reply_support":
         reply_text = text.strip()
 
         if not reply_text:
@@ -4257,15 +4464,39 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             add_message_to_batch(batch_id, target_user_id, sent_msg.message_id)
 
             if target_username:
-                add_transaction(target_username, "admin_support_reply", 0, f"رد الأدمن: {reply_text[:80]}")
-                support_waiting_reply.pop(target_username, None)
-                save_data()
+               operator_text = get_support_operator_text(user_id)
+
+               add_transaction(
+                   target_username,
+                   "support_reply",
+                   0,
+                   f"رد {operator_text} ID {user_id}: {reply_text[:80]}"
+                )
+
+               support_waiting_reply.pop(target_username, None)
+               save_data()
+
+               if is_support_employee(user_id):
+                  try:
+                       await context.bot.send_message(
+                           chat_id=ADMIN_ID,
+                           text=(
+                                f"👨‍💼 رد موظف دعم على المستخدم\n\n"
+                                f"👤 المستخدم: {target_username}\n"
+                                f"🆔 User ID: {target_user_id}\n"
+                                f"👨‍💼 موظف الدعم ID: {user_id}\n"
+                                f"🕒 الوقت: {now_str()}\n\n"
+                                f"📝 الرد:\n{reply_text}"
+                            )
+                     )
+                  except Exception as e:
+                       print(f"خطأ في إرسال إشعار رد موظف الدعم للمدير: {e}")
 
             user_states.pop(user_id, None)
 
             await update.message.reply_text(
                 "✅ تم إرسال الرد إلى المستخدم بنجاح",
-                reply_markup=admin_keyboard()
+                reply_markup=admin_keyboard() if user_id == ADMIN_ID else main_menu_keyboard()
             )
 
             await update.message.reply_text(
@@ -4277,7 +4508,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_states.pop(user_id, None)
             await update.message.reply_text(
                 "❌ تعذر إرسال الرد إلى المستخدم",
-                reply_markup=admin_keyboard()
+                reply_markup=admin_keyboard() if user_id == ADMIN_ID else main_menu_keyboard()
             )
         return
     
@@ -5581,7 +5812,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("🚫 تم منعك من مراسلة الدعم")
             return
 
-        if support_waiting_reply.get(username, False):
+        if support_waiting_reply.get(username, False) and not has_active_support_claim(username):
             user_states.pop(user_id, None)
             await update.message.reply_text(
                 "⏳ لا يمكنك إرسال رسالة جديدة إلى الدعم الآن\n"
@@ -5602,30 +5833,32 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         support_caption = update.message.caption.strip() if update.message.caption else "بدون نص"
 
         try:
-            support_keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton("✉️ رد على المستخدم", callback_data=f"reply_support_{user_id}")]
-            ])
+            support_keyboard = build_support_reply_keyboard(user_id)
 
-            await context.bot.send_photo(
-                chat_id=ADMIN_ID,
-                photo=update.message.photo[-1].file_id,
-                caption=(
-                    f"📩 رسالة دعم جديدة\n\n"
-                    f"👤 الاسم داخل البوت: {username}\n"
-                    f"🙍 الاسم الأول: {tg_name}\n"
-                    f"📱 يوزر تيليغرام: {tg_username_text}\n"
-                    f"🆔 Telegram ID: {user_id}\n"
-                    f"📌 حالة الحساب: {get_status_text(username)}\n"
-                    f"📦 الباقة: {plan}\n"
-                    f"💰 رأس المال: {capital}$\n"
-                    f"📈 الرصيد الحالي: {balance}$\n"
-                    f"💵 الأرباح فقط: {profit_only}$\n"
-                    f"🕒 الوقت: {now_str()}\n"
-                    f"🖼 النوع: صورة\n\n"
-                    f"📝 النص المرفق:\n{support_caption}"
-                ),
-                reply_markup=support_keyboard
-            )
+            support_caption_text = (
+                f"📩 رسالة دعم جديدة\n\n"
+                f"👤 الاسم داخل البوت: {username}\n"
+                f"🙍 الاسم الأول: {tg_name}\n"
+                f"📱 يوزر تيليغرام: {tg_username_text}\n"
+                f"🆔 Telegram ID: {user_id}\n"
+                f"📌 حالة الحساب: {get_status_text(username)}\n"
+                f"📦 الباقة: {plan}\n"
+                f"💰 رأس المال: {capital}$\n"
+                f"📈 الرصيد الحالي: {balance}$\n"
+                f"💵 الأرباح فقط: {profit_only}$\n"
+                f"🕒 الوقت: {now_str()}\n"
+                f"🖼 النوع: صورة\n\n"
+                f"📝 النص المرفق:\n{support_caption}"
+                        )
+
+            await send_support_photo_to_operators(
+               context=context,
+               target_user_id=user_id,
+               username=username,
+               photo_file_id=update.message.photo[-1].file_id,
+               caption_text=support_caption_text,
+               reply_markup=support_keyboard
+                   )
 
             add_transaction(username, "support_message_photo", 0, f"أرسل صورة للدعم: {support_caption[:80]}")
             support_waiting_reply[username] = True
@@ -6219,19 +6452,27 @@ async def handle_admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
 
     # =========================
     # حماية صارمة لأزرار الأدمن
+    # مع السماح لموظفي الدعم بزر الرد فقط عند تفعيل النظام
     # =========================
     if is_admin_callback(data) and query.from_user.id != ADMIN_ID:
-        try:
-            await query.answer("❌ هذا الزر خاص بالإدارة فقط", show_alert=True)
-        except:
-            pass
+       if (
+           data.startswith("reply_support_")
+           and support_employees_enabled
+           and is_support_employee(query.from_user.id)
+            ):
+           pass
+       else:
+           try:
+               await query.answer("❌ هذا الزر خاص بالإدارة فقط", show_alert=True)
+           except:
+               pass
 
-        try:
-            await query.message.reply_text("❌ ليس لديك صلاحية تنفيذ هذا الإجراء")
-        except:
-            pass
+           try:
+               await query.message.reply_text("❌ ليس لديك صلاحية تنفيذ هذا الإجراء")
+           except:
+               pass
 
-        return
+           return
     
     if data == "admin_enable_maintenance":
         bot_maintenance_mode = True
@@ -6513,6 +6754,8 @@ async def handle_admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
             referral_bonus_paid.pop(username, None)
             stopped_profit_users.pop(username, None)
             support_waiting_reply.pop(username, None)
+            support_claims.pop(username, None)
+            support_message_copies.pop(str(user_id), None)
             manual_withdraw_open.pop(username, None)
             user_created_time.pop(username, None)
             user_wallet_address.pop(username, None)
@@ -8215,20 +8458,70 @@ async def handle_admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
         return
     
     elif data.startswith("reply_support_"):
-        target_user_id = int(data.split("_")[-1])
+       target_user_id = int(data.split("_")[-1])
+       operator_id = query.from_user.id
 
-        user_states[ADMIN_ID] = {
-            "step": "admin_reply_support",
-            "target_user_id": target_user_id
-        }
+       target_username = find_username_by_telegram_id(target_user_id)
 
-        await query.message.reply_text(
-            f"✉️ اكتب الآن الرد الذي تريد إرساله إلى المستخدم:\n"
-            f"🆔 User ID: {target_user_id}\n\n"
-            f"للتراجع اضغط: 🔙 إلغاء الإرسال",
-            reply_markup=admin_cancel_keyboard()
-        )
-        return
+       if not target_username:
+           await query.message.reply_text("❌ تعذر تحديد المستخدم صاحب رسالة الدعم")
+           return
+
+       # المدير يستطيع الرد دائمًا بدون حجز
+       if operator_id == ADMIN_ID:
+           user_states[operator_id] = {
+               "step": "admin_reply_support",
+               "target_user_id": target_user_id
+           }
+
+           await query.message.reply_text(
+               f"✉️ اكتب الآن الرد الذي تريد إرساله إلى المستخدم:\n"
+               f"🆔 User ID: {target_user_id}\n\n"
+               f"للتراجع اضغط: 🔙 إلغاء الإرسال",
+               reply_markup=admin_cancel_keyboard()
+           )
+           return
+
+       # الموظف لا يستطيع الرد إذا نظام الموظفين متوقف
+       if not support_employees_enabled:
+           await query.answer("⛔ موظفو الدعم متوقفون حاليًا", show_alert=True)
+           return
+
+       if not is_support_employee(operator_id):
+           await query.answer("❌ لا تملك صلاحية الرد على الدعم", show_alert=True)
+           return
+
+       # إذا المحادثة محجوزة لموظف آخر
+       if has_active_support_claim(target_username):
+           current_employee_id = get_support_claim_employee_id(target_username)
+
+           if current_employee_id and int(current_employee_id) != int(operator_id):
+               await query.answer("❌ هذه المحادثة محجوزة لموظف آخر مؤقتًا", show_alert=True)
+               return
+
+       # حجز المستخدم لهذا الموظف لمدة 15 دقيقة
+       claim_support_user(target_username, operator_id)
+
+       # حذف نسخة الرسالة من باقي الموظفين فقط
+       await delete_support_message_from_other_employees(
+           context=context,
+           target_user_id=target_user_id,
+           keep_employee_id=operator_id
+       )
+
+       user_states[operator_id] = {
+        "step": "admin_reply_support",
+        "target_user_id": target_user_id
+       }
+
+       await query.message.reply_text(
+           f"✉️ اكتب الآن الرد الذي تريد إرساله إلى المستخدم:\n"
+           f"🆔 User ID: {target_user_id}\n"
+           f"⏳ تم حجز هذه المحادثة لك لمدة 15 دقيقة\n\n"
+           f"للتراجع اضغط: 🔙 إلغاء الإرسال",
+           reply_markup=admin_cancel_keyboard()
+       )
+       return
     
     elif data.startswith("admin_blocksupport_"):
         username = data.replace("admin_blocksupport_", "", 1)
