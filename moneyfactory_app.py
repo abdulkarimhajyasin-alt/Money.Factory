@@ -32,7 +32,7 @@ ADMIN_ID = ADMIN_IDS[0]
 # أضف Telegram User ID لكل موظف دعم هنا
 # الموظف يبقى مستخدمًا عاديًا ولا يحصل على صلاحيات أدمن
 # =========================
-SUPPORT_EMPLOYEE_IDS = []
+SUPPORT_EMPLOYEE_IDS = [5102448932]
 
 DATA_FILE = "data.json"
 
