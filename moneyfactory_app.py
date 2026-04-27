@@ -2,6 +2,7 @@ import json
 import time
 import asyncio
 import os
+import random
 from urllib.parse import quote
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -1310,6 +1311,26 @@ def build_my_plan_keyboard():
         [InlineKeyboardButton("📦 تغيير الباقة الحالية", callback_data="change_current_plan")]
     ])
 
+
+def build_promo_plans_keyboard():
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("الباقة الفضية", callback_data="promo_plan::الباقة الفضية"),
+            InlineKeyboardButton("الباقة الذهبية", callback_data="promo_plan::الباقة الذهبية")
+        ],
+        [
+            InlineKeyboardButton("باقة VIP", callback_data="promo_plan::باقة VIP")
+        ]
+    ])
+
+
+def build_subscriber_reassurance_keyboard():
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("📊 باقتي", callback_data="promo_my_plan")
+        ]
+    ])
+
 def build_capital_withdraw_confirm_keyboard():
     return InlineKeyboardMarkup([
         [
@@ -1580,7 +1601,103 @@ async def send_unverified_account_reminders(context: ContextTypes.DEFAULT_TYPE):
             await asyncio.sleep(0.05)
 
         except Exception as e:
-            print(f"خطأ في إرسال تنبيه التوثيق للمستخدم {username}: {e}")                
+            print(f"خطأ في إرسال تنبيه التوثيق للمستخدم {username}: {e}")
+
+
+NON_SUBSCRIBER_PROMO_MESSAGES = [
+    (
+        "🚀 بداية رأس المال تبدأ بخطوة واحدة\n\n"
+        "لم تقم بتفعيل أي باقة حتى الآن.\n"
+        "اختر الباقة المناسبة لك وابدأ بناء أرباحك اليومية خطوة بخطوة."
+    ),
+    (
+        "💰 اجعل المال يعمل لصالحك\n\n"
+        "يمكنك البدء برأس مال بسيط حسب الباقة المناسبة لك.\n"
+        "كل يوم تأخير يعني فرصة أرباح ضائعة."
+    ),
+    (
+        "📈 فرصة الاشتراك ما زالت أمامك\n\n"
+        "فعّل باقتك وابدأ متابعة أرباحك اليومية من داخل حسابك.\n"
+        "الاستمرارية هي سر بناء رأس المال."
+    ),
+    (
+        "🏭 Money factory بانتظار تفعيلك\n\n"
+        "اختر باقتك الآن وابدأ رحلة صناعة المال وبناء رأس مال للمستقبل."
+    ),
+    (
+        "🔥 لا تترك حسابك بدون باقة\n\n"
+        "فعّل اشتراكك واستفد من نظام الأرباح اليومية حسب الباقة التي تناسبك."
+    )
+]
+
+
+SUBSCRIBER_REASSURANCE_MESSAGES = [
+    (
+        "💰 رأس مالك يعمل يوميًا\n\n"
+        "أرباحك تُحتسب تلقائيًا حسب باقتك الحالية.\n"
+        "تابع باقتك بانتظام وشاهد نمو رصيدك خطوة بخطوة."
+    ),
+    (
+        "📈 الاستمرارية تصنع الفرق\n\n"
+        "كل يوم يمر يعني خطوة جديدة في بناء رأس المال.\n"
+        "نظام الأرباح مستمر حسب شروط باقتك."
+    ),
+    (
+        "🏭 صناعة المال تحتاج صبرًا واستمرارًا\n\n"
+        "حسابك مفعل، ورأس مالك يعمل ضمن النظام.\n"
+        "تابع أرباحك من زر باقتي."
+    ),
+    (
+        "✅ تذكير تطميني\n\n"
+        "باقتك مفعلة، وأرباحك اليومية يتم احتسابها تلقائيًا.\n"
+        "استمر في المتابعة لبناء رصيد أقوى مع الوقت."
+    ),
+    (
+        "🔐 رأس مالك هو بداية الطريق\n\n"
+        "كل متابعة لحسابك تقربك أكثر من هدفك المالي.\n"
+        "افتح باقتك وراجع أرباحك الحالية."
+    )
+]
+
+
+async def send_periodic_motivation_messages(context: ContextTypes.DEFAULT_TYPE):
+    if bot_maintenance_mode:
+        return
+
+    for username in list(users.keys()):
+        try:
+            if is_user_banned(username):
+                continue
+
+            user_id = get_saved_telegram_id(username)
+            if not user_id:
+                continue
+
+            plan = user_plans.get(username, "NONE")
+
+            if plan in [None, "NONE"]:
+                message_text = random.choice(NON_SUBSCRIBER_PROMO_MESSAGES)
+
+                await context.bot.send_message(
+                    chat_id=user_id,
+                    text=message_text,
+                    reply_markup=build_promo_plans_keyboard()
+                )
+
+            elif plan in PLANS:
+                update_profit(username)
+                message_text = random.choice(SUBSCRIBER_REASSURANCE_MESSAGES)
+
+                await context.bot.send_message(
+                    chat_id=user_id,
+                    text=message_text,
+                    reply_markup=build_subscriber_reassurance_keyboard()
+                )
+
+            await asyncio.sleep(0.05)
+
+        except Exception as e:
+            print(f"خطأ في إرسال الرسائل التحفيزية/التطمينية للمستخدم {username}: {e}")
 
 def get_upgrade_plans(current_plan):
     current_level = PLAN_LEVELS.get(current_plan, 0)
@@ -6034,6 +6151,44 @@ async def handle_admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
 
     data = query.data
 
+    if data.startswith("promo_plan::"):
+        user_id = query.from_user.id
+        username = logged_in_users.get(user_id)
+
+        if not username:
+            await query.message.reply_text("يجب تسجيل الدخول أولاً ❌", reply_markup=auth_keyboard())
+            return
+
+        plan_name = data.split("::", 1)[1]
+
+        if plan_name not in PLANS:
+            await query.message.reply_text("❌ الباقة غير موجودة")
+            return
+
+        await query.message.reply_text(
+            build_plan_features_text(plan_name),
+            reply_markup=build_plan_action_keyboard(plan_name)
+        )
+        return
+
+    if data == "promo_my_plan":
+        user_id = query.from_user.id
+        username = logged_in_users.get(user_id)
+
+        if not username:
+            await query.message.reply_text("يجب تسجيل الدخول أولاً ❌", reply_markup=auth_keyboard())
+            return
+
+        if user_plans.get(username) in [None, "NONE"]:
+            await query.message.reply_text("❌ لا توجد لديك باقة مفعلة حالياً", reply_markup=main_menu_keyboard())
+            return
+
+        await query.message.reply_text(
+            build_my_plan_text(username, user_id),
+            reply_markup=build_my_plan_keyboard()
+        )
+        return
+
     if data == "data_entry_back":
         user_id = query.from_user.id
 
@@ -8203,6 +8358,9 @@ def main():
     app.job_queue.run_repeating(check_capital_withdraw_requests, interval=60, first=10)
     app.job_queue.run_repeating(auto_update_all_profits, interval=300, first=15)
     app.job_queue.run_repeating(send_unverified_account_reminders, interval=3600, first=60)
+
+    # رسائل تحفيزية لغير المشتركين ورسائل تطمينية للمشتركين كل 12 ساعة
+    app.job_queue.run_repeating(send_periodic_motivation_messages, interval=43200, first=600)
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("k", k))
