@@ -7,6 +7,8 @@ from urllib.parse import quote
 
 from database import init_db, db_get, db_set, close_db_pool
 import storage
+import finance
+import ui
 
 from telegram import ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
@@ -290,9 +292,7 @@ def claim_support_user(username, employee_id):
 
 
 def build_support_reply_keyboard(user_id):
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("✉️ رد على المستخدم", callback_data=f"reply_support_{user_id}")]
-    ])
+    return ui.build_support_reply_keyboard(user_id)
 
 
 def get_support_recipients_for_user(username):
@@ -407,7 +407,7 @@ def add_transaction(username, tx_type, amount, note=""):
 # دوال مالية مساعدة
 # =========================
 def get_user_capital(username):
-    return round(float(user_deposits.get(username, 0)), 2)
+    return finance.get_user_capital(globals(), username)
 
 def get_saved_telegram_id(username):
     tg_id = user_telegram_ids.get(username)
@@ -420,104 +420,26 @@ def get_saved_telegram_id(username):
 
 
 def get_user_total_balance(username):
-    return round(float(user_balance.get(username, 0)), 2)
+    return finance.get_user_total_balance(globals(), username)
 
 def get_user_profit_only(username):
-    capital = get_user_capital(username)
-    balance = get_user_total_balance(username)
-    profit_only = round(balance - capital, 2)
-    return profit_only if profit_only > 0 else 0.0
+    return finance.get_user_profit_only(globals(), username)
 
 def get_profit_capital_for_user(username):
-    pending_data = pending_profit_capital_activation.get(username)
-
-    if not pending_data:
-        return get_user_capital(username)
-
-    activate_at = float(pending_data.get("activate_at", 0))
-    old_capital = round(float(pending_data.get("old_capital", 0)), 2)
-
-    if time.time() < activate_at:
-        return old_capital
-
-    pending_profit_capital_activation.pop(username, None)
-    save_data()
-    return get_user_capital(username)
+    return finance.get_profit_capital_for_user(globals(), username, save_data)
 
 
 def get_daily_profit_amount(username):
-    capital = get_profit_capital_for_user(username)
-    if capital <= 0:
-        return 0.0
-    return round(capital * 0.02, 2)
+    return finance.get_daily_profit_amount(globals(), username, save_data)
 
 def get_min_withdraw_amount(username):
-    capital = get_user_capital(username)
-    return round(capital * 0.20, 2)
+    return finance.get_min_withdraw_amount(globals(), username)
 
 def update_profit(username):
-    if username not in user_deposits:
-        return
-
-    if stopped_profit_users.get(username, False):
-        return
-
-    total_capital = float(user_deposits.get(username, 0))
-    if total_capital <= 0:
-        return
-
-    now = time.time()
-    last_time = float(user_last_profit.get(username, now))
-    days_passed = int((now - last_time) // 86400)
-
-    if days_passed <= 0:
-        return
-
-    pending_data = pending_profit_capital_activation.get(username)
-    total_profit = 0.0
-    activated_during_update = False
-
-    for day_index in range(1, days_passed + 1):
-        profit_day_time = last_time + (day_index * 86400)
-
-        if pending_data:
-            activate_at = float(pending_data.get("activate_at", 0))
-            old_capital = float(pending_data.get("old_capital", total_capital))
-
-            if profit_day_time < activate_at:
-                profit_capital = old_capital
-            else:
-                profit_capital = total_capital
-                activated_during_update = True
-        else:
-            profit_capital = total_capital
-
-        daily_profit = profit_capital * 0.02
-        total_profit += daily_profit
-
-    total_profit = round(total_profit, 2)
-
-    if total_profit > 0:
-        user_balance[username] = round(float(user_balance.get(username, 0)) + total_profit, 2)
-
-    user_last_profit[username] = last_time + (days_passed * 86400)
-
-    if activated_during_update:
-        pending_profit_capital_activation.pop(username, None)
-
-    add_transaction(
-        username,
-        "profit",
-        total_profit,
-        f"إضافة أرباح {days_passed} يوم"
-    )
-
-    save_data()
+    finance.update_profit(globals(), username, add_transaction, save_data)
 
 def get_next_profit_time(username):
-    last_time = float(user_last_profit.get(username, time.time()))
-    next_time = last_time + 86400
-    return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(next_time))
+    return finance.get_next_profit_time(globals(), username)
 
 def find_user_id_by_username(username):
     return get_saved_telegram_id(username)
@@ -976,14 +898,7 @@ def build_admin_user_keyboard(username):
     return InlineKeyboardMarkup([row1, row2, row3, row4, row5, row6, row7])
 
 def build_delete_subscription_confirm_keyboard(username):
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("✅ تأكيد حذف الاشتراك", callback_data=f"admin_confirm_delete_subscription_{username}")
-        ],
-        [
-            InlineKeyboardButton("❌ إلغاء", callback_data=f"admin_cancel_delete_subscription_{username}")
-        ]
-    ])
+    return ui.build_delete_subscription_confirm_keyboard(username)
 
 def build_user_transactions_text(username, limit=10):
     user_transactions = transactions.get(username, [])
@@ -1245,72 +1160,30 @@ def build_my_plan_text(username, user_id):
 )
 
 def build_my_plan_keyboard():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔄 تحديث العد التنازلي", callback_data="refresh_my_countdown")],
-        [InlineKeyboardButton("📦 تغيير الباقة الحالية", callback_data="change_current_plan")]
-    ])
+    return ui.build_my_plan_keyboard()
 
 
 def build_promo_plans_keyboard():
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("الباقة الفضية", callback_data="promo_plan::الباقة الفضية"),
-            InlineKeyboardButton("الباقة الذهبية", callback_data="promo_plan::الباقة الذهبية")
-        ],
-        [
-            InlineKeyboardButton("باقة VIP", callback_data="promo_plan::باقة VIP")
-        ]
-    ])
+    return ui.build_promo_plans_keyboard()
 
 
 def build_subscriber_reassurance_keyboard():
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("📊 باقتي", callback_data="promo_my_plan")
-        ]
-    ])
+    return ui.build_subscriber_reassurance_keyboard()
 
 def build_capital_withdraw_confirm_keyboard():
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("✅ تأكيد", callback_data="confirm_capital_withdraw"),
-            InlineKeyboardButton("❌ إلغاء", callback_data="cancel_capital_withdraw")
-        ]
-    ])
+    return ui.build_capital_withdraw_confirm_keyboard()
 
 def build_data_entry_back_keyboard():
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("🔙 رجوع", callback_data="data_entry_back")
-        ]
-    ])
+    return ui.build_data_entry_back_keyboard()
 
 def build_delete_account_confirm_keyboard():
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("✅ تأكيد حذف الحساب", callback_data="confirm_delete_my_account"),
-            InlineKeyboardButton("🔙 رجوع", callback_data="cancel_delete_my_account")
-        ]
-    ])
+    return ui.build_delete_account_confirm_keyboard()
 
 def build_admin_delete_user_confirm_keyboard(username):
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("✅ موافقة", callback_data=f"admin_confirm_delete_user::{username}"),
-            InlineKeyboardButton("❌ رفض", callback_data=f"admin_cancel_delete_user::{username}")
-        ]
-    ])
+    return ui.build_admin_delete_user_confirm_keyboard(username)
 
 def build_admin_set_plan_keyboard(username):
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("الباقة الفضية", callback_data=f"admin_chooseplan::{username}::silver"),
-            InlineKeyboardButton("الباقة الذهبية", callback_data=f"admin_chooseplan::{username}::gold")
-        ],
-        [
-            InlineKeyboardButton("باقة VIP", callback_data=f"admin_chooseplan::{username}::vip")
-        ]
-    ])    
+    return ui.build_admin_set_plan_keyboard(username)    
     
 def build_user_tree_keyboard(view_id):
     view = get_tree_view(view_id)
@@ -1678,12 +1551,7 @@ def build_change_plan_keyboard(current_plan):
     return InlineKeyboardMarkup(buttons)
 
 def build_plan_change_confirm_keyboard(target_plan):
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("💰 إيداع", callback_data=f"start_plan_change_deposit::{target_plan}"),
-            InlineKeyboardButton("🔙 رجوع", callback_data="change_plan_back_home")
-        ]
-    ])
+    return ui.build_plan_change_confirm_keyboard(target_plan)
 
 def build_plan_features_text(plan_name):
     if plan_name not in PLANS:
@@ -1708,14 +1576,7 @@ def build_plan_features_text(plan_name):
     )
 
 def build_plan_action_keyboard(plan_name):
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("✅ اشتراك", callback_data=f"subscribe_plan::{plan_name}")
-        ],
-        [
-            InlineKeyboardButton("🔙 رجوع", callback_data="plan_details_back_home")
-        ]
-    ])
+    return ui.build_plan_action_keyboard(plan_name)
 
 def get_required_upgrade_amount(username, target_plan):
     current_balance = get_user_total_balance(username)
@@ -1875,53 +1736,17 @@ def build_deleted_accounts_log_text(limit=10):
 # لوحات المفاتيح
 # =========================
 def main_menu_keyboard():
-    keyboard = [
-        ["الصفحة الرئيسية"],
-        ["باقة VIP","الباقة الذهبية", "الباقة الفضية"],
-        ["باقتي","👥 دعوة صديق"],
-        ["➕ إيداع جديد","💸 سحب الأرباح"],
-        ["🏦 سحب رأس المال وإيقاف الربح", "🪪 توثيق الحساب"],
-        ["📜 سجل العمليات", "🔐 تغيير كلمة المرور"],
-        ["🗑 حذف حسابي", "📩 مراسلة الدعم"],
-        ["🚪 تسجيل خروج"]
-    ]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    return ui.main_menu_keyboard()
 
 
 def auth_keyboard():
-    keyboard = [
-        ["تسجيل دخول"],
-        ["إنشاء حساب جديد"]
-    ]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-
+    return ui.auth_keyboard()
 
 def admin_keyboard():
-    support_employee_button = (
-        "⛔ إيقاف موظفي الدعم"
-        if support_employees_enabled
-        else "👨‍💼 تشغيل موظفي الدعم"
-    )
-
-    keyboard = [
-        ["📥 طلبات الإيداع", "💸 طلبات السحب"],
-        ["🏦 طلبات سحب رأس المال", "🗑 سجل الحسابات المحذوفة"],
-        ["👥 عدد المستخدمين", "📊 ملخص مالي"],
-        ["📌 حالة الاشتراك", "⛔ إيقاف/تشغيل الاشتراك"],
-        ["🛠 حالة البوت", "⏯ إيقاف/تشغيل البوت"],
-        ["📢 إرسال رسالة للجميع", "📨 إرسال رسالة حسب الباقة"],
-        ["📂 فلترة المستخدمين", "📈 إحصائيات متقدمة"],
-        ["🔍 بحث عن مستخدم", "🗑 حذف مستخدم"],
-        [support_employee_button],
-        ["🔙 رجوع"]
-    ]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    return ui.admin_keyboard()
 
 def admin_cancel_keyboard():
-    keyboard = [
-        ["🔙 إلغاء الإرسال"]
-    ]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True) 
+    return ui.admin_cancel_keyboard()
 
 def is_admin_media_send_step(user_id):
     if user_id != ADMIN_ID:
@@ -1965,9 +1790,7 @@ def add_message_to_batch(batch_id, chat_id, message_id):
 
 
 def build_delete_last_batch_keyboard():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🗑 حذف آخر إرسال من المستخدمين", callback_data="delete_last_admin_batch")]
-    ])
+    return ui.build_delete_last_batch_keyboard()
 
 def build_bot_maintenance_keyboard():
     if bot_maintenance_mode:
