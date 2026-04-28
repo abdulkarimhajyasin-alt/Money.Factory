@@ -4,9 +4,10 @@ import asyncio
 import os
 import random
 from urllib.parse import quote
-import psycopg2
-from psycopg2.extras import RealDictCursor
-from psycopg2.pool import ThreadedConnectionPool
+
+from database import init_db, db_get, db_set, close_db_pool
+import storage
+
 from telegram import ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     ApplicationBuilder,
@@ -188,279 +189,33 @@ def format_timestamp(ts):
         return "غير متوفر"
     
 # =========================
-# PostgreSQL Storage - Connection Pool
-# =========================
-def init_db_pool():
-    global db_pool
-
-    if not DATABASE_URL:
-        raise ValueError("DATABASE_URL غير موجود. تأكد من إضافته داخل Render Environment.")
-
-    if db_pool is None:
-        db_pool = ThreadedConnectionPool(
-            minconn=1,
-            maxconn=5,
-            dsn=DATABASE_URL,
-            cursor_factory=RealDictCursor
-        )
-
-
-def get_db_connection():
-    global db_pool
-
-    if db_pool is None:
-        init_db_pool()
-
-    return db_pool.getconn()
-
-
-def release_db_connection(conn):
-    global db_pool
-
-    if db_pool is not None and conn is not None:
-        db_pool.putconn(conn)
-
-
-def close_db_pool():
-    global db_pool
-
-    if db_pool is not None:
-        db_pool.closeall()
-        db_pool = None
-
-
-def init_db():
-    conn = None
-    cur = None
-
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS bot_storage (
-                key TEXT PRIMARY KEY,
-                value JSONB NOT NULL
-            );
-        """)
-
-        conn.commit()
-
-    except Exception as e:
-        if conn:
-            conn.rollback()
-        print(f"خطأ في init_db: {e}")
-        raise
-
-    finally:
-        if cur:
-            cur.close()
-        release_db_connection(conn)
-
-
-def db_get(key, default_value):
-    conn = None
-    cur = None
-
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-
-        cur.execute("SELECT value FROM bot_storage WHERE key = %s;", (key,))
-        row = cur.fetchone()
-
-        if row:
-            return row["value"]
-
-        return default_value
-
-    except Exception as e:
-        print(f"خطأ في db_get للعنصر {key}: {e}")
-        return default_value
-
-    finally:
-        if cur:
-            cur.close()
-        release_db_connection(conn)
-
-
-def db_set(key, value):
-    conn = None
-    cur = None
-
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-
-        cur.execute("""
-            INSERT INTO bot_storage (key, value)
-            VALUES (%s, %s::jsonb)
-            ON CONFLICT (key)
-            DO UPDATE SET value = EXCLUDED.value;
-        """, (key, json.dumps(value, ensure_ascii=False)))
-
-        conn.commit()
-
-    except Exception as e:
-        if conn:
-            conn.rollback()
-        print(f"خطأ في db_set للعنصر {key}: {e}")
-        raise
-
-    finally:
-        if cur:
-            cur.close()
-        release_db_connection(conn)    
-    
-
-# =========================
 # تحميل / حفظ البيانات
 # =========================
 def load_users():
-    global users
-    users = db_get("users", {})
+    storage.load_users(globals())
 
 
 def save_users():
-    db_set("users", users)
+    storage.save_users(globals())
 
 
 def load_chat_ids():
-    global chat_ids
-    chat_ids = db_get("chat_ids", [])
+    storage.load_chat_ids(globals())
 
 
 def save_chat_ids():
-    db_set("chat_ids", chat_ids)
+    storage.save_chat_ids(globals())
 
 
 def load_data():
-    global user_plans, user_balance, transactions
-    global user_deposits, user_last_profit
-    global user_withdraw_logs, user_deposit_logs
-    global pending_deposit_requests, pending_withdraw_requests
-    global logged_in_users, user_statuses, support_blocked_users
-    global user_telegram_ids, subscriptions_open, bot_maintenance_mode
-    global pending_verification_requests, user_residence, user_full_name, verified_users
-    global user_referrer, referral_bonus_paid
-    global user_first_deposit_time, user_last_withdraw_time
-    global capital_withdraw_requests, stopped_profit_users
-    global support_waiting_reply, support_employees_enabled, support_claims, support_message_copies
-    global admin_sent_batches, admin_last_batch_id
-    global deleted_accounts_log
-    global manual_withdraw_open
-    global user_created_time
-    global user_tree_views
-    global user_wallet_address
-    global user_wallet_network
-    global user_identity_photos
-    global pending_profit_capital_activation
-
-    data = db_get("data", {})
-
-    user_plans = data.get("user_plans", {})
-    user_balance = data.get("user_balance", {})
-    transactions = data.get("transactions", {})
-    user_deposits = data.get("user_deposits", {})
-    user_last_profit = data.get("user_last_profit", {})
-    user_withdraw_logs = data.get("user_withdraw_logs", {})
-    user_deposit_logs = data.get("user_deposit_logs", {})
-    support_blocked_users = data.get("support_blocked_users", {})
-    user_first_deposit_time = data.get("user_first_deposit_time", {})
-    user_last_withdraw_time = data.get("user_last_withdraw_time", {})
-    user_telegram_ids = data.get("user_telegram_ids", {})
-    subscriptions_open = data.get("subscriptions_open", True)
-    bot_maintenance_mode = data.get("bot_maintenance_mode", False)
-
-    pending_verification_requests = {
-        int(k): v for k, v in data.get("pending_verification_requests", {}).items()
-    }
-
-    user_residence = data.get("user_residence", {})
-    user_full_name = data.get("user_full_name", {})
-    verified_users = data.get("verified_users", {})
-    user_referrer = data.get("user_referrer", {})
-    referral_bonus_paid = data.get("referral_bonus_paid", {})
-
-    capital_withdraw_requests = {
-        int(k): v for k, v in data.get("capital_withdraw_requests", {}).items()
-    }
-
-    stopped_profit_users = data.get("stopped_profit_users", {})
-    support_waiting_reply = data.get("support_waiting_reply", {})
-    support_employees_enabled = data.get("support_employees_enabled", False)
-    support_claims = data.get("support_claims", {})
-    support_message_copies = data.get("support_message_copies", {})
-    admin_sent_batches = data.get("admin_sent_batches", {})
-    admin_last_batch_id = data.get("admin_last_batch_id", None)
-    deleted_accounts_log = data.get("deleted_accounts_log", [])
-    manual_withdraw_open = data.get("manual_withdraw_open", {})
-    user_created_time = data.get("user_created_time", {})
-    user_tree_views = data.get("user_tree_views", {})
-    user_wallet_address = data.get("user_wallet_address", {})
-    user_wallet_network = data.get("user_wallet_network", {})
-    user_identity_photos = data.get("user_identity_photos", {})
-    pending_profit_capital_activation = data.get("pending_profit_capital_activation", {})
-
-    pending_deposit_requests = {
-        int(k): v for k, v in data.get("pending_deposit_requests", {}).items()
-    }
-
-    pending_withdraw_requests = {
-        int(k): v for k, v in data.get("pending_withdraw_requests", {}).items()
-    }
-
-    logged_in_users = {
-        int(k): v for k, v in data.get("logged_in_users", {}).items()
-    }
-
-    user_statuses = data.get("user_statuses", {})
+    storage.load_data(globals())
 
 
 def save_data():
-    data = {
-        "user_plans": user_plans,
-        "user_balance": user_balance,
-        "transactions": transactions,
-        "user_deposits": user_deposits,
-        "user_last_profit": user_last_profit,
-        "user_withdraw_logs": user_withdraw_logs,
-        "user_deposit_logs": user_deposit_logs,
-        "support_blocked_users": support_blocked_users,
-        "user_first_deposit_time": user_first_deposit_time,
-        "user_last_withdraw_time": user_last_withdraw_time,
-        "user_telegram_ids": user_telegram_ids,
-        "subscriptions_open": subscriptions_open,
-        "bot_maintenance_mode": bot_maintenance_mode,
-        "pending_verification_requests": {str(k): v for k, v in pending_verification_requests.items()},
-        "user_residence": user_residence,
-        "user_full_name": user_full_name,
-        "verified_users": verified_users,
-        "user_referrer": user_referrer,
-        "referral_bonus_paid": referral_bonus_paid,
-        "capital_withdraw_requests": {str(k): v for k, v in capital_withdraw_requests.items()},
-        "stopped_profit_users": stopped_profit_users,
-        "support_waiting_reply": support_waiting_reply,
-        "support_employees_enabled": support_employees_enabled,
-        "support_claims": support_claims,
-        "support_message_copies": support_message_copies,
-        "admin_sent_batches": admin_sent_batches,
-        "admin_last_batch_id": admin_last_batch_id,
-        "deleted_accounts_log": deleted_accounts_log,
-        "manual_withdraw_open": manual_withdraw_open,
-        "user_created_time": user_created_time,
-        "user_tree_views": user_tree_views,
-        "user_wallet_address": user_wallet_address,
-        "user_wallet_network": user_wallet_network,
-        "user_identity_photos": user_identity_photos,
-        "pending_profit_capital_activation": pending_profit_capital_activation,
-        "pending_deposit_requests": {str(k): v for k, v in pending_deposit_requests.items()},
-        "pending_withdraw_requests": {str(k): v for k, v in pending_withdraw_requests.items()},
-        "logged_in_users": {str(k): v for k, v in logged_in_users.items()},
-        "user_statuses": user_statuses,
-    }
+    storage.save_data(globals())    
+    
 
-    db_set("data", data)
+
 
 def is_support_blocked(username):
     return bool(support_blocked_users.get(username, False))
@@ -8642,7 +8397,7 @@ def main():
     if not BOT_TOKEN:
         raise ValueError("BOT_TOKEN غير موجود. تأكد من وضع التوكن أو متغير البيئة.")
     
-    init_db_pool()
+    
     init_db()
 
     load_users()
@@ -8659,7 +8414,7 @@ def main():
     app.job_queue.run_repeating(send_unverified_account_reminders, interval=3600, first=60)
 
     # رسائل تحفيزية لغير المشتركين ورسائل تطمينية للمشتركين كل 12 ساعة
-    app.job_queue.run_repeating(send_periodic_motivation_messages, interval=43200, first=600)
+    app.job_queue.run_repeating(send_periodic_motivation_messages, interval=43200, first=2000)
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("k", k))
