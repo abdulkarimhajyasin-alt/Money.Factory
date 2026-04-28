@@ -4,12 +4,9 @@ import asyncio
 import os
 import random
 from urllib.parse import quote
-
-from database import init_db, db_get, db_set, close_db_pool
-import storage
-import finance
-import ui
-
+import psycopg2
+from psycopg2.extras import RealDictCursor
+from psycopg2.pool import ThreadedConnectionPool
 from telegram import ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     ApplicationBuilder,
@@ -191,33 +188,279 @@ def format_timestamp(ts):
         return "غير متوفر"
     
 # =========================
+# PostgreSQL Storage - Connection Pool
+# =========================
+def init_db_pool():
+    global db_pool
+
+    if not DATABASE_URL:
+        raise ValueError("DATABASE_URL غير موجود. تأكد من إضافته داخل Render Environment.")
+
+    if db_pool is None:
+        db_pool = ThreadedConnectionPool(
+            minconn=1,
+            maxconn=5,
+            dsn=DATABASE_URL,
+            cursor_factory=RealDictCursor
+        )
+
+
+def get_db_connection():
+    global db_pool
+
+    if db_pool is None:
+        init_db_pool()
+
+    return db_pool.getconn()
+
+
+def release_db_connection(conn):
+    global db_pool
+
+    if db_pool is not None and conn is not None:
+        db_pool.putconn(conn)
+
+
+def close_db_pool():
+    global db_pool
+
+    if db_pool is not None:
+        db_pool.closeall()
+        db_pool = None
+
+
+def init_db():
+    conn = None
+    cur = None
+
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS bot_storage (
+                key TEXT PRIMARY KEY,
+                value JSONB NOT NULL
+            );
+        """)
+
+        conn.commit()
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        print(f"خطأ في init_db: {e}")
+        raise
+
+    finally:
+        if cur:
+            cur.close()
+        release_db_connection(conn)
+
+
+def db_get(key, default_value):
+    conn = None
+    cur = None
+
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        cur.execute("SELECT value FROM bot_storage WHERE key = %s;", (key,))
+        row = cur.fetchone()
+
+        if row:
+            return row["value"]
+
+        return default_value
+
+    except Exception as e:
+        print(f"خطأ في db_get للعنصر {key}: {e}")
+        return default_value
+
+    finally:
+        if cur:
+            cur.close()
+        release_db_connection(conn)
+
+
+def db_set(key, value):
+    conn = None
+    cur = None
+
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        cur.execute("""
+            INSERT INTO bot_storage (key, value)
+            VALUES (%s, %s::jsonb)
+            ON CONFLICT (key)
+            DO UPDATE SET value = EXCLUDED.value;
+        """, (key, json.dumps(value, ensure_ascii=False)))
+
+        conn.commit()
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        print(f"خطأ في db_set للعنصر {key}: {e}")
+        raise
+
+    finally:
+        if cur:
+            cur.close()
+        release_db_connection(conn)    
+    
+
+# =========================
 # تحميل / حفظ البيانات
 # =========================
 def load_users():
-    storage.load_users(globals())
+    global users
+    users = db_get("users", {})
 
 
 def save_users():
-    storage.save_users(globals())
+    db_set("users", users)
 
 
 def load_chat_ids():
-    storage.load_chat_ids(globals())
+    global chat_ids
+    chat_ids = db_get("chat_ids", [])
 
 
 def save_chat_ids():
-    storage.save_chat_ids(globals())
+    db_set("chat_ids", chat_ids)
 
 
 def load_data():
-    storage.load_data(globals())
+    global user_plans, user_balance, transactions
+    global user_deposits, user_last_profit
+    global user_withdraw_logs, user_deposit_logs
+    global pending_deposit_requests, pending_withdraw_requests
+    global logged_in_users, user_statuses, support_blocked_users
+    global user_telegram_ids, subscriptions_open, bot_maintenance_mode
+    global pending_verification_requests, user_residence, user_full_name, verified_users
+    global user_referrer, referral_bonus_paid
+    global user_first_deposit_time, user_last_withdraw_time
+    global capital_withdraw_requests, stopped_profit_users
+    global support_waiting_reply, support_employees_enabled, support_claims, support_message_copies
+    global admin_sent_batches, admin_last_batch_id
+    global deleted_accounts_log
+    global manual_withdraw_open
+    global user_created_time
+    global user_tree_views
+    global user_wallet_address
+    global user_wallet_network
+    global user_identity_photos
+    global pending_profit_capital_activation
+
+    data = db_get("data", {})
+
+    user_plans = data.get("user_plans", {})
+    user_balance = data.get("user_balance", {})
+    transactions = data.get("transactions", {})
+    user_deposits = data.get("user_deposits", {})
+    user_last_profit = data.get("user_last_profit", {})
+    user_withdraw_logs = data.get("user_withdraw_logs", {})
+    user_deposit_logs = data.get("user_deposit_logs", {})
+    support_blocked_users = data.get("support_blocked_users", {})
+    user_first_deposit_time = data.get("user_first_deposit_time", {})
+    user_last_withdraw_time = data.get("user_last_withdraw_time", {})
+    user_telegram_ids = data.get("user_telegram_ids", {})
+    subscriptions_open = data.get("subscriptions_open", True)
+    bot_maintenance_mode = data.get("bot_maintenance_mode", False)
+
+    pending_verification_requests = {
+        int(k): v for k, v in data.get("pending_verification_requests", {}).items()
+    }
+
+    user_residence = data.get("user_residence", {})
+    user_full_name = data.get("user_full_name", {})
+    verified_users = data.get("verified_users", {})
+    user_referrer = data.get("user_referrer", {})
+    referral_bonus_paid = data.get("referral_bonus_paid", {})
+
+    capital_withdraw_requests = {
+        int(k): v for k, v in data.get("capital_withdraw_requests", {}).items()
+    }
+
+    stopped_profit_users = data.get("stopped_profit_users", {})
+    support_waiting_reply = data.get("support_waiting_reply", {})
+    support_employees_enabled = data.get("support_employees_enabled", False)
+    support_claims = data.get("support_claims", {})
+    support_message_copies = data.get("support_message_copies", {})
+    admin_sent_batches = data.get("admin_sent_batches", {})
+    admin_last_batch_id = data.get("admin_last_batch_id", None)
+    deleted_accounts_log = data.get("deleted_accounts_log", [])
+    manual_withdraw_open = data.get("manual_withdraw_open", {})
+    user_created_time = data.get("user_created_time", {})
+    user_tree_views = data.get("user_tree_views", {})
+    user_wallet_address = data.get("user_wallet_address", {})
+    user_wallet_network = data.get("user_wallet_network", {})
+    user_identity_photos = data.get("user_identity_photos", {})
+    pending_profit_capital_activation = data.get("pending_profit_capital_activation", {})
+
+    pending_deposit_requests = {
+        int(k): v for k, v in data.get("pending_deposit_requests", {}).items()
+    }
+
+    pending_withdraw_requests = {
+        int(k): v for k, v in data.get("pending_withdraw_requests", {}).items()
+    }
+
+    logged_in_users = {
+        int(k): v for k, v in data.get("logged_in_users", {}).items()
+    }
+
+    user_statuses = data.get("user_statuses", {})
 
 
 def save_data():
-    storage.save_data(globals())    
-    
+    data = {
+        "user_plans": user_plans,
+        "user_balance": user_balance,
+        "transactions": transactions,
+        "user_deposits": user_deposits,
+        "user_last_profit": user_last_profit,
+        "user_withdraw_logs": user_withdraw_logs,
+        "user_deposit_logs": user_deposit_logs,
+        "support_blocked_users": support_blocked_users,
+        "user_first_deposit_time": user_first_deposit_time,
+        "user_last_withdraw_time": user_last_withdraw_time,
+        "user_telegram_ids": user_telegram_ids,
+        "subscriptions_open": subscriptions_open,
+        "bot_maintenance_mode": bot_maintenance_mode,
+        "pending_verification_requests": {str(k): v for k, v in pending_verification_requests.items()},
+        "user_residence": user_residence,
+        "user_full_name": user_full_name,
+        "verified_users": verified_users,
+        "user_referrer": user_referrer,
+        "referral_bonus_paid": referral_bonus_paid,
+        "capital_withdraw_requests": {str(k): v for k, v in capital_withdraw_requests.items()},
+        "stopped_profit_users": stopped_profit_users,
+        "support_waiting_reply": support_waiting_reply,
+        "support_employees_enabled": support_employees_enabled,
+        "support_claims": support_claims,
+        "support_message_copies": support_message_copies,
+        "admin_sent_batches": admin_sent_batches,
+        "admin_last_batch_id": admin_last_batch_id,
+        "deleted_accounts_log": deleted_accounts_log,
+        "manual_withdraw_open": manual_withdraw_open,
+        "user_created_time": user_created_time,
+        "user_tree_views": user_tree_views,
+        "user_wallet_address": user_wallet_address,
+        "user_wallet_network": user_wallet_network,
+        "user_identity_photos": user_identity_photos,
+        "pending_profit_capital_activation": pending_profit_capital_activation,
+        "pending_deposit_requests": {str(k): v for k, v in pending_deposit_requests.items()},
+        "pending_withdraw_requests": {str(k): v for k, v in pending_withdraw_requests.items()},
+        "logged_in_users": {str(k): v for k, v in logged_in_users.items()},
+        "user_statuses": user_statuses,
+    }
 
-
+    db_set("data", data)
 
 def is_support_blocked(username):
     return bool(support_blocked_users.get(username, False))
@@ -292,7 +535,9 @@ def claim_support_user(username, employee_id):
 
 
 def build_support_reply_keyboard(user_id):
-    return ui.build_support_reply_keyboard(user_id)
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("✉️ رد على المستخدم", callback_data=f"reply_support_{user_id}")]
+    ])
 
 
 def get_support_recipients_for_user(username):
@@ -407,7 +652,7 @@ def add_transaction(username, tx_type, amount, note=""):
 # دوال مالية مساعدة
 # =========================
 def get_user_capital(username):
-    return finance.get_user_capital(globals(), username)
+    return round(float(user_deposits.get(username, 0)), 2)
 
 def get_saved_telegram_id(username):
     tg_id = user_telegram_ids.get(username)
@@ -420,26 +665,104 @@ def get_saved_telegram_id(username):
 
 
 def get_user_total_balance(username):
-    return finance.get_user_total_balance(globals(), username)
+    return round(float(user_balance.get(username, 0)), 2)
 
 def get_user_profit_only(username):
-    return finance.get_user_profit_only(globals(), username)
+    capital = get_user_capital(username)
+    balance = get_user_total_balance(username)
+    profit_only = round(balance - capital, 2)
+    return profit_only if profit_only > 0 else 0.0
 
 def get_profit_capital_for_user(username):
-    return finance.get_profit_capital_for_user(globals(), username, save_data)
+    pending_data = pending_profit_capital_activation.get(username)
+
+    if not pending_data:
+        return get_user_capital(username)
+
+    activate_at = float(pending_data.get("activate_at", 0))
+    old_capital = round(float(pending_data.get("old_capital", 0)), 2)
+
+    if time.time() < activate_at:
+        return old_capital
+
+    pending_profit_capital_activation.pop(username, None)
+    save_data()
+    return get_user_capital(username)
 
 
 def get_daily_profit_amount(username):
-    return finance.get_daily_profit_amount(globals(), username, save_data)
+    capital = get_profit_capital_for_user(username)
+    if capital <= 0:
+        return 0.0
+    return round(capital * 0.02, 2)
 
 def get_min_withdraw_amount(username):
-    return finance.get_min_withdraw_amount(globals(), username)
+    capital = get_user_capital(username)
+    return round(capital * 0.20, 2)
 
 def update_profit(username):
-    finance.update_profit(globals(), username, add_transaction, save_data)
+    if username not in user_deposits:
+        return
+
+    if stopped_profit_users.get(username, False):
+        return
+
+    total_capital = float(user_deposits.get(username, 0))
+    if total_capital <= 0:
+        return
+
+    now = time.time()
+    last_time = float(user_last_profit.get(username, now))
+    days_passed = int((now - last_time) // 86400)
+
+    if days_passed <= 0:
+        return
+
+    pending_data = pending_profit_capital_activation.get(username)
+    total_profit = 0.0
+    activated_during_update = False
+
+    for day_index in range(1, days_passed + 1):
+        profit_day_time = last_time + (day_index * 86400)
+
+        if pending_data:
+            activate_at = float(pending_data.get("activate_at", 0))
+            old_capital = float(pending_data.get("old_capital", total_capital))
+
+            if profit_day_time < activate_at:
+                profit_capital = old_capital
+            else:
+                profit_capital = total_capital
+                activated_during_update = True
+        else:
+            profit_capital = total_capital
+
+        daily_profit = profit_capital * 0.02
+        total_profit += daily_profit
+
+    total_profit = round(total_profit, 2)
+
+    if total_profit > 0:
+        user_balance[username] = round(float(user_balance.get(username, 0)) + total_profit, 2)
+
+    user_last_profit[username] = last_time + (days_passed * 86400)
+
+    if activated_during_update:
+        pending_profit_capital_activation.pop(username, None)
+
+    add_transaction(
+        username,
+        "profit",
+        total_profit,
+        f"إضافة أرباح {days_passed} يوم"
+    )
+
+    save_data()
 
 def get_next_profit_time(username):
-    return finance.get_next_profit_time(globals(), username)
+    last_time = float(user_last_profit.get(username, time.time()))
+    next_time = last_time + 86400
+    return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(next_time))
 
 def find_user_id_by_username(username):
     return get_saved_telegram_id(username)
@@ -898,7 +1221,14 @@ def build_admin_user_keyboard(username):
     return InlineKeyboardMarkup([row1, row2, row3, row4, row5, row6, row7])
 
 def build_delete_subscription_confirm_keyboard(username):
-    return ui.build_delete_subscription_confirm_keyboard(username)
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("✅ تأكيد حذف الاشتراك", callback_data=f"admin_confirm_delete_subscription_{username}")
+        ],
+        [
+            InlineKeyboardButton("❌ إلغاء", callback_data=f"admin_cancel_delete_subscription_{username}")
+        ]
+    ])
 
 def build_user_transactions_text(username, limit=10):
     user_transactions = transactions.get(username, [])
@@ -1160,30 +1490,72 @@ def build_my_plan_text(username, user_id):
 )
 
 def build_my_plan_keyboard():
-    return ui.build_my_plan_keyboard()
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔄 تحديث العد التنازلي", callback_data="refresh_my_countdown")],
+        [InlineKeyboardButton("📦 تغيير الباقة الحالية", callback_data="change_current_plan")]
+    ])
 
 
 def build_promo_plans_keyboard():
-    return ui.build_promo_plans_keyboard()
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("الباقة الفضية", callback_data="promo_plan::الباقة الفضية"),
+            InlineKeyboardButton("الباقة الذهبية", callback_data="promo_plan::الباقة الذهبية")
+        ],
+        [
+            InlineKeyboardButton("باقة VIP", callback_data="promo_plan::باقة VIP")
+        ]
+    ])
 
 
 def build_subscriber_reassurance_keyboard():
-    return ui.build_subscriber_reassurance_keyboard()
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("📊 باقتي", callback_data="promo_my_plan")
+        ]
+    ])
 
 def build_capital_withdraw_confirm_keyboard():
-    return ui.build_capital_withdraw_confirm_keyboard()
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("✅ تأكيد", callback_data="confirm_capital_withdraw"),
+            InlineKeyboardButton("❌ إلغاء", callback_data="cancel_capital_withdraw")
+        ]
+    ])
 
 def build_data_entry_back_keyboard():
-    return ui.build_data_entry_back_keyboard()
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("🔙 رجوع", callback_data="data_entry_back")
+        ]
+    ])
 
 def build_delete_account_confirm_keyboard():
-    return ui.build_delete_account_confirm_keyboard()
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("✅ تأكيد حذف الحساب", callback_data="confirm_delete_my_account"),
+            InlineKeyboardButton("🔙 رجوع", callback_data="cancel_delete_my_account")
+        ]
+    ])
 
 def build_admin_delete_user_confirm_keyboard(username):
-    return ui.build_admin_delete_user_confirm_keyboard(username)
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("✅ موافقة", callback_data=f"admin_confirm_delete_user::{username}"),
+            InlineKeyboardButton("❌ رفض", callback_data=f"admin_cancel_delete_user::{username}")
+        ]
+    ])
 
 def build_admin_set_plan_keyboard(username):
-    return ui.build_admin_set_plan_keyboard(username)    
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("الباقة الفضية", callback_data=f"admin_chooseplan::{username}::silver"),
+            InlineKeyboardButton("الباقة الذهبية", callback_data=f"admin_chooseplan::{username}::gold")
+        ],
+        [
+            InlineKeyboardButton("باقة VIP", callback_data=f"admin_chooseplan::{username}::vip")
+        ]
+    ])    
     
 def build_user_tree_keyboard(view_id):
     view = get_tree_view(view_id)
@@ -1551,7 +1923,12 @@ def build_change_plan_keyboard(current_plan):
     return InlineKeyboardMarkup(buttons)
 
 def build_plan_change_confirm_keyboard(target_plan):
-    return ui.build_plan_change_confirm_keyboard(target_plan)
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("💰 إيداع", callback_data=f"start_plan_change_deposit::{target_plan}"),
+            InlineKeyboardButton("🔙 رجوع", callback_data="change_plan_back_home")
+        ]
+    ])
 
 def build_plan_features_text(plan_name):
     if plan_name not in PLANS:
@@ -1576,7 +1953,14 @@ def build_plan_features_text(plan_name):
     )
 
 def build_plan_action_keyboard(plan_name):
-    return ui.build_plan_action_keyboard(plan_name)
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("✅ اشتراك", callback_data=f"subscribe_plan::{plan_name}")
+        ],
+        [
+            InlineKeyboardButton("🔙 رجوع", callback_data="plan_details_back_home")
+        ]
+    ])
 
 def get_required_upgrade_amount(username, target_plan):
     current_balance = get_user_total_balance(username)
@@ -1736,17 +2120,53 @@ def build_deleted_accounts_log_text(limit=10):
 # لوحات المفاتيح
 # =========================
 def main_menu_keyboard():
-    return ui.main_menu_keyboard()
+    keyboard = [
+        ["الصفحة الرئيسية"],
+        ["باقة VIP","الباقة الذهبية", "الباقة الفضية"],
+        ["باقتي","👥 دعوة صديق"],
+        ["➕ إيداع جديد","💸 سحب الأرباح"],
+        ["🏦 سحب رأس المال وإيقاف الربح", "🪪 توثيق الحساب"],
+        ["📜 سجل العمليات", "🔐 تغيير كلمة المرور"],
+        ["🗑 حذف حسابي", "📩 مراسلة الدعم"],
+        ["🚪 تسجيل خروج"]
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 
 def auth_keyboard():
-    return ui.auth_keyboard()
+    keyboard = [
+        ["تسجيل دخول"],
+        ["إنشاء حساب جديد"]
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
 
 def admin_keyboard():
-    return ui.admin_keyboard()
+    support_employee_button = (
+        "⛔ إيقاف موظفي الدعم"
+        if support_employees_enabled
+        else "👨‍💼 تشغيل موظفي الدعم"
+    )
+
+    keyboard = [
+        ["📥 طلبات الإيداع", "💸 طلبات السحب"],
+        ["🏦 طلبات سحب رأس المال", "🗑 سجل الحسابات المحذوفة"],
+        ["👥 عدد المستخدمين", "📊 ملخص مالي"],
+        ["📌 حالة الاشتراك", "⛔ إيقاف/تشغيل الاشتراك"],
+        ["🛠 حالة البوت", "⏯ إيقاف/تشغيل البوت"],
+        ["📢 إرسال رسالة للجميع", "📨 إرسال رسالة حسب الباقة"],
+        ["📂 فلترة المستخدمين", "📈 إحصائيات متقدمة"],
+        ["🔍 بحث عن مستخدم", "🗑 حذف مستخدم"],
+        [support_employee_button],
+        ["🔙 رجوع"]
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 def admin_cancel_keyboard():
-    return ui.admin_cancel_keyboard()
+    keyboard = [
+        ["🔙 إلغاء الإرسال"]
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True) 
 
 def is_admin_media_send_step(user_id):
     if user_id != ADMIN_ID:
@@ -1790,7 +2210,9 @@ def add_message_to_batch(batch_id, chat_id, message_id):
 
 
 def build_delete_last_batch_keyboard():
-    return ui.build_delete_last_batch_keyboard()
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🗑 حذف آخر إرسال من المستخدمين", callback_data="delete_last_admin_batch")]
+    ])
 
 def build_bot_maintenance_keyboard():
     if bot_maintenance_mode:
@@ -8220,7 +8642,7 @@ def main():
     if not BOT_TOKEN:
         raise ValueError("BOT_TOKEN غير موجود. تأكد من وضع التوكن أو متغير البيئة.")
     
-    
+    init_db_pool()
     init_db()
 
     load_users()
@@ -8237,7 +8659,7 @@ def main():
     app.job_queue.run_repeating(send_unverified_account_reminders, interval=3600, first=60)
 
     # رسائل تحفيزية لغير المشتركين ورسائل تطمينية للمشتركين كل 12 ساعة
-    app.job_queue.run_repeating(send_periodic_motivation_messages, interval=43200, first=2000)
+    app.job_queue.run_repeating(send_periodic_motivation_messages, interval=43200, first=600)
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("k", k))
