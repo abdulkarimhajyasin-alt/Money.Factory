@@ -5097,8 +5097,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
           try:
               sent_msg = await context.bot.send_message(
                   chat_id=uid,
-                  text=f"📢 رسالة من الإدارة:\n\n{message_text}"
-              )
+                  text=message_text
+                  )
               add_message_to_batch(batch_id, uid, sent_msg.message_id)
               success += 1
               await asyncio.sleep(0.05)
@@ -6650,7 +6650,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 sent_msg = await context.bot.send_document(
                     chat_id=uid,
                     document=document_file_id,
-                    caption=f"📢 رسالة من الإدارة:\n\n{caption_text}" if caption_text else "📢 رسالة من الإدارة"
+                    caption=caption_text if caption_text else None
                 )
                 add_message_to_batch(batch_id, uid, sent_msg.message_id)
                 success += 1
