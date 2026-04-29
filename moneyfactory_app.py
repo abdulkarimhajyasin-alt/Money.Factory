@@ -1148,6 +1148,64 @@ def is_manual_withdraw_open(username):
     data = manual_withdraw_open.get(username, {})
     return bool(data.get("is_open", False))
 
+PROFIT_REINVEST_WINDOW_SECONDS = 3600  # ساعة واحدة
+
+
+def get_profit_reinvest_available_until(username):
+    now = time.time()
+
+    manual_data = manual_withdraw_open.get(username)
+    if manual_data and manual_data.get("is_open", False):
+        opened_at = float(manual_data.get("opened_at", 0))
+        until_ts = opened_at + PROFIT_REINVEST_WINDOW_SECONDS
+
+        if now <= until_ts:
+            return until_ts
+
+        return None
+
+    next_withdraw_ts = get_next_withdraw_timestamp(username)
+
+    if not next_withdraw_ts:
+        return None
+
+    until_ts = float(next_withdraw_ts) + PROFIT_REINVEST_WINDOW_SECONDS
+
+    if float(next_withdraw_ts) <= now <= until_ts:
+        return until_ts
+
+    return None
+
+
+def is_profit_reinvest_available(username):
+    return get_profit_reinvest_available_until(username) is not None
+
+
+def get_profit_reinvest_countdown_text(username):
+    until_ts = get_profit_reinvest_available_until(username)
+
+    if not until_ts:
+        return "غير متاح"
+
+    diff = int(until_ts - time.time())
+
+    if diff <= 0:
+        return "انتهت المدة"
+
+    minutes = diff // 60
+    seconds = diff % 60
+
+    return f"{minutes} دقيقة، {seconds} ثانية"
+
+
+def build_profit_reinvest_confirm_keyboard():
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("✅ موافق", callback_data="confirm_profit_reinvest"),
+            InlineKeyboardButton("🔙 رجوع", callback_data="cancel_profit_reinvest")
+        ]
+    ])
+
 def close_manual_withdraw_for_user(username):
     if username not in users:
         return False, "❌ المستخدم غير موجود"
@@ -1629,11 +1687,23 @@ def build_my_plan_text(username, user_id):
     f"💸 طلب سحب معلق: {pending_wd}"
 )
 
-def build_my_plan_keyboard():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔄 تحديث العد التنازلي", callback_data="refresh_my_countdown")],
-        [InlineKeyboardButton("📦 تغيير الباقة الحالية", callback_data="change_current_plan")]
+def build_my_plan_keyboard(username=None):
+    buttons = []
+
+    if username and is_profit_reinvest_available(username):
+        buttons.append([
+            InlineKeyboardButton("🔁 استثمار الأرباح", callback_data="profit_reinvest")
+        ])
+
+    buttons.append([
+        InlineKeyboardButton("🔄 تحديث العد التنازلي", callback_data="refresh_my_countdown")
     ])
+
+    buttons.append([
+        InlineKeyboardButton("📦 تغيير الباقة الحالية", callback_data="change_current_plan")
+    ])
+
+    return InlineKeyboardMarkup(buttons)
 
 
 def build_promo_plans_keyboard():
@@ -5328,7 +5398,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(
             text_message,
-            reply_markup=build_my_plan_keyboard()
+            reply_markup=build_my_plan_keyboard(username)
         )
         return
 
@@ -5919,7 +5989,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     sent_msg = await context.bot.send_photo(
                         chat_id=uid,
                         photo=update.message.photo[-1].file_id,
-                        caption=f"📢 رسالة من الإدارة:\n\n{caption_text}" if caption_text else "📢 رسالة من الإدارة"
+                        caption=caption_text if caption_text else ""
                     )
                     add_message_to_batch(batch_id, uid, sent_msg.message_id)
                     success += 1
@@ -6684,7 +6754,7 @@ async def handle_admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
 
         await query.message.reply_text(
             build_my_plan_text(username, user_id),
-            reply_markup=build_my_plan_keyboard()
+            reply_markup=build_my_plan_keyboard(username)
         )
         return
 
@@ -7644,6 +7714,152 @@ async def handle_admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
             "اختر نوع المستخدمين الذين تريد عرضهم:",
             reply_markup=keyboard
         )
+        return
+
+    if data == "profit_reinvest":
+        user_id = query.from_user.id
+        username = logged_in_users.get(user_id)
+
+        if not username:
+            await query.message.reply_text("يجب تسجيل الدخول أولاً ❌", reply_markup=auth_keyboard())
+            return
+
+        ensure_user_defaults(username)
+        update_profit(username)
+
+        if user_plans.get(username) in [None, "NONE"]:
+            await query.message.reply_text("❌ لا توجد لديك باقة مفعلة حالياً")
+            return
+
+        if is_user_banned(username):
+            await query.message.reply_text("⛔ حسابك محظور")
+            return
+
+        if is_user_frozen(username):
+            await query.message.reply_text("⚠️ حسابك مجمد ماليًا، ولا يمكن تنفيذ هذه العملية حاليًا")
+            return
+
+        if not is_profit_reinvest_available(username):
+            await query.message.reply_text(
+                "❌ خيار استثمار الأرباح غير متاح حاليًا\n\n"
+                "يظهر هذا الخيار لمدة ساعة واحدة فقط من لحظة إتاحة السحب."
+            )
+            return
+
+        capital = get_user_capital(username)
+        profit_only = get_user_profit_only(username)
+        new_capital = round(capital + profit_only, 2)
+
+        if profit_only <= 0:
+            await query.message.reply_text("❌ لا توجد أرباح متاحة للاستثمار حاليًا")
+            return
+
+        await query.message.reply_text(
+            f"🔁 تأكيد استثمار الأرباح\n\n"
+            f"سيتم إضافة الأرباح المتاحة للسحب إلى رأس مالك.\n\n"
+            f"💰 رأس المال الحالي: {capital}$\n"
+            f"💵 الأرباح المتاحة للسحب: {profit_only}$\n"
+            f"📈 رأس المال الجديد بعد الاستثمار: {new_capital}$\n\n"
+            f"⏳ هذا الخيار متاح لمدة:\n"
+            f"{get_profit_reinvest_countdown_text(username)}\n\n"
+            f"هل تريد المتابعة؟",
+            reply_markup=build_profit_reinvest_confirm_keyboard()
+        )
+        return
+
+    if data == "cancel_profit_reinvest":
+        user_id = query.from_user.id
+        username = logged_in_users.get(user_id)
+
+        try:
+            await query.message.delete()
+        except:
+            pass
+
+        await context.bot.send_message(
+            chat_id=user_id,
+            text="🏠 تم الرجوع إلى باقتك",
+            reply_markup=main_menu_keyboard()
+        )
+
+        if username:
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=build_my_plan_text(username, user_id),
+                reply_markup=build_my_plan_keyboard(username)
+            )
+        return
+
+    if data == "confirm_profit_reinvest":
+        user_id = query.from_user.id
+        username = logged_in_users.get(user_id)
+
+        if not username:
+            await query.edit_message_text("يجب تسجيل الدخول أولاً ❌")
+            return
+
+        ensure_user_defaults(username)
+        update_profit(username)
+
+        if user_plans.get(username) in [None, "NONE"]:
+            await query.edit_message_text("❌ لا توجد لديك باقة مفعلة حالياً")
+            return
+
+        if is_user_banned(username) or is_user_frozen(username):
+            await query.edit_message_text("❌ حالة الحساب لا تسمح بتنفيذ العملية")
+            return
+
+        if not is_profit_reinvest_available(username):
+            await query.edit_message_text(
+                "❌ انتهت مدة إتاحة استثمار الأرباح\n\n"
+                "هذا الخيار متاح لمدة ساعة واحدة فقط من لحظة إتاحة السحب."
+            )
+            return
+
+        old_capital = get_user_capital(username)
+        current_balance = get_user_total_balance(username)
+        profit_only = get_user_profit_only(username)
+
+        if profit_only <= 0:
+            await query.edit_message_text("❌ لا توجد أرباح متاحة للاستثمار حاليًا")
+            return
+
+        new_capital = round(old_capital + profit_only, 2)
+
+        user_deposits[username] = new_capital
+        user_balance[username] = current_balance
+
+        user_last_profit[username] = time.time()
+        user_last_withdraw_time[username] = time.time()
+
+        manual_withdraw_open.pop(username, None)
+        pending_profit_capital_activation.pop(username, None)
+
+        user_deposit_logs.setdefault(username, []).append({
+            "amount": profit_only,
+            "time": now_str(),
+            "status": "approved",
+            "type": "profit_reinvest",
+            "note": f"تم استثمار الأرباح وإضافتها إلى رأس المال | من {old_capital}$ إلى {new_capital}$"
+        })
+
+        add_transaction(
+            username,
+            "profit_reinvest",
+            profit_only,
+            f"تم استثمار الأرباح وإضافتها إلى رأس المال | رأس المال من {old_capital}$ إلى {new_capital}$"
+        )
+
+        save_data()
+
+        await query.edit_message_text(
+            f"✅ تم استثمار الأرباح بنجاح\n\n"
+            f"💰 رأس المال السابق: {old_capital}$\n"
+            f"💵 الأرباح المستثمرة: {profit_only}$\n"
+            f"📈 رأس المال الجديد: {new_capital}$\n\n"
+            f"⏰ تم بدء دورة سحب جديدة من الآن.\n"
+            f"💸 موعد السحب القادم: {get_next_withdraw_datetime_text(username)}"
+        )
         return 
 
     if data == "refresh_my_countdown":
@@ -7662,7 +7878,7 @@ async def handle_admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
         try:
             await query.edit_message_text(
                 text=text_message,
-                reply_markup=build_my_plan_keyboard()
+                reply_markup=build_my_plan_keyboard(username)
             )
         except Exception as e:
             if "Message is not modified" not in str(e):
