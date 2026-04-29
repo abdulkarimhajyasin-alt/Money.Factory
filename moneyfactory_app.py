@@ -8953,28 +8953,32 @@ async def handle_admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
            await query.message.reply_text("❌ تعذر تحديد المستخدم صاحب رسالة الدعم")
            return
 
-       # المدير يستطيع الرد دائمًا بدون حجز
-       # وعند ضغط المدير على زر الرد يتم حذف نسخ رسالة المستخدم من موظفي الدعم
+       # المدير يستطيع الرد دائمًا
+       # وعند ضغط المدير على زر الرد يتم حجز المستخدم للمدير لمدة 15 دقيقة
+       # ويتم حذف نسخ رسالة المستخدم من موظفي الدعم
        if operator_id == ADMIN_ID:
 
+          claim_support_user(target_username, ADMIN_ID)
+
           await delete_support_message_from_other_employees(
-           context=context,
-           target_user_id=target_user_id,
-           keep_employee_id=ADMIN_ID
-            )
+              context=context,
+              target_user_id=target_user_id,
+              keep_employee_id=ADMIN_ID
+               )
 
           user_states[operator_id] = {
-            "step": "admin_reply_support",
-            "target_user_id": target_user_id
-             }
+             "step": "admin_reply_support",
+             "target_user_id": target_user_id
+              }
 
           await query.message.reply_text(
-            f"✉️ اكتب الآن الرد الذي تريد إرساله إلى المستخدم:\n"
-            f"🆔 User ID: {target_user_id}\n\n"
-            f"✅ تم حذف نسخة رسالة الدعم من موظفي الدعم.\n\n"
-            f"للتراجع اضغط: 🔙 إلغاء الإرسال",
-            reply_markup=admin_cancel_keyboard()
-             )
+               f"✉️ اكتب الآن الرد الذي تريد إرساله إلى المستخدم:\n"
+               f"🆔 User ID: {target_user_id}\n"
+               f"⏳ تم حجز هذا المستخدم للمدير لمدة 15 دقيقة\n\n"
+               f"✅ تم حذف نسخة رسالة الدعم من موظفي الدعم.\n\n"
+               f"للتراجع اضغط: 🔙 إلغاء الإرسال",
+             reply_markup=admin_cancel_keyboard()
+              )
           return
 
        # الموظف لا يستطيع الرد إذا نظام الموظفين متوقف
