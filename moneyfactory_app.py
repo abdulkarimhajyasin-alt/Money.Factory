@@ -120,6 +120,46 @@ PLANS = {
 }
 
 COUNTRY_TIMEZONES = {
+    "🇨🇭 سويسرا": {
+        "country": "سويسرا",
+        "timezone": "Europe/Zurich"
+    },
+    "🇮🇹 إيطاليا": {
+        "country": "إيطاليا",
+        "timezone": "Europe/Rome"
+    },
+    "🇪🇸 إسبانيا": {
+        "country": "إسبانيا",
+        "timezone": "Europe/Madrid"
+    },
+    "🇬🇷 اليونان": {
+        "country": "اليونان",
+        "timezone": "Europe/Athens"
+    },
+    "🇵🇱 بولندا": {
+        "country": "بولندا",
+        "timezone": "Europe/Warsaw"
+    },
+    "🇨🇿 التشيك": {
+        "country": "التشيك",
+        "timezone": "Europe/Prague"
+    },
+    "🇷🇴 رومانيا": {
+        "country": "رومانيا",
+        "timezone": "Europe/Bucharest"
+    },
+    "🇭🇺 هنغاريا": {
+        "country": "هنغاريا",
+        "timezone": "Europe/Budapest"
+    },
+    "🇫🇮 فنلندا": {
+        "country": "فنلندا",
+        "timezone": "Europe/Helsinki"
+    },
+    "🇶🇦 قطر": {
+        "country": "قطر",
+        "timezone": "Asia/Qatar"
+    },
     "🇦🇹 النمسا": {
         "country": "النمسا",
         "timezone": "Europe/Vienna"
@@ -301,6 +341,16 @@ def get_timezone_display_text(username):
     tz_name = get_user_timezone(username)
 
     mapping = {
+        "Europe/Zurich": "سويسرا / Zurich",
+        "Europe/Rome": "إيطاليا / Rome",
+        "Europe/Madrid": "إسبانيا / Madrid",
+        "Europe/Athens": "اليونان / Athens",
+        "Europe/Warsaw": "بولندا / Warsaw",
+        "Europe/Prague": "التشيك / Prague",
+        "Europe/Bucharest": "رومانيا / Bucharest",
+        "Europe/Budapest": "هنغاريا / Budapest",
+        "Europe/Helsinki": "فنلندا / Helsinki",
+        "Asia/Qatar": "قطر / Qatar",
         "Europe/Vienna": "النمسا / Vienna",
         "Europe/Berlin": "ألمانيا / Berlin",
         "Europe/Istanbul": "تركيا / Istanbul",
@@ -323,7 +373,48 @@ def get_timezone_display_text(username):
         "America/Toronto": "كندا / Toronto",
     }
 
-    return mapping.get(tz_name, tz_name)    
+    return mapping.get(tz_name, tz_name) 
+
+def migrate_old_users_timezones():
+    changed = False
+
+    residence_timezone_map = {}
+
+    for country_label, country_data in COUNTRY_TIMEZONES.items():
+        country_name = country_data.get("country")
+        timezone_name = country_data.get("timezone")
+
+        if country_name and timezone_name:
+            residence_timezone_map[country_name] = timezone_name
+
+    residence_aliases = {
+        "سوريا ادلب": "سوريا",
+        "المانيا": "ألمانيا",
+        "امريكا": "أمريكا - نيويورك",
+        "أمريكا": "أمريكا - نيويورك",
+        "كندا": "كندا - تورونتو",
+        "بريطانيا": "بريطانيا",
+        "انجلترا": "بريطانيا",
+        "إنجلترا": "بريطانيا",
+    }
+
+    for username in users:
+        if username in user_timezone and user_timezone.get(username):
+            continue
+
+        residence = user_residence.get(username)
+
+        if not residence:
+            continue
+
+        normalized_residence = residence_aliases.get(residence, residence)
+
+        if normalized_residence in residence_timezone_map:
+            user_timezone[username] = residence_timezone_map[normalized_residence]
+            changed = True
+
+    if changed:
+        save_data()   
     
 # =========================
 # PostgreSQL Storage - Connection Pool
@@ -2334,29 +2425,17 @@ def build_deleted_accounts_log_text(limit=10):
 # =========================
 
 def country_selection_keyboard():
-    keyboard = [
-        ["🇦🇹 النمسا"],
-        ["🇩🇪 ألمانيا"],
-        ["🇹🇷 تركيا"],
-        ["🇸🇦 السعودية"],
-        ["🇦🇪 الإمارات"],
-        ["🇮🇶 العراق"],
-        ["🇯🇴 الأردن"],
-        ["🇸🇾 سوريا"],
-        ["🇱🇧 لبنان"],
-        ["🇪🇬 مصر"],
-        ["🇵🇸 فلسطين"],
-        ["🇳🇱 هولندا"],
-        ["🇫🇷 فرنسا"],
-        ["🇧🇪 بلجيكا"],
-        ["🇸🇪 السويد"],
-        ["🇩🇰 الدنمارك"],
-        ["🇳🇴 النرويج"],
-        ["🇬🇧 بريطانيا"],
-        ["🇺🇸 أمريكا - نيويورك"],
-        ["🇨🇦 كندا - تورونتو"],
-        ["🔙 رجوع"]
-    ]
+    country_list = list(COUNTRY_TIMEZONES.keys())
+
+    sorted_countries = sorted(
+        country_list,
+        key=lambda country_label: COUNTRY_TIMEZONES[country_label]["country"]
+    )
+
+    keyboard = [[country_label] for country_label in sorted_countries]
+
+    keyboard.append(["🔙 رجوع"])
+
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 
@@ -5827,8 +5906,12 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # اسمح للأدمن بالإرسال حتى بدون state عادي
-    if not state and not is_admin_media_send_step(user_id):
-       return
+    if not state:
+        if is_admin_media_send_step(user_id):
+           pass
+        else:
+           await update.message.reply_text("❌ لا توجد عملية حالية لاستقبال صورة")
+           return
     
         # =========================
     # صور الأدمن (رد دعم / للجميع / حسب الباقة / لمستخدم محدد)
@@ -9144,12 +9227,15 @@ def main():
 
     for username in users:
         ensure_user_defaults(username)
+
+    migrate_old_users_timezones()
+
     save_data()
 
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.job_queue.run_repeating(check_capital_withdraw_requests, interval=60, first=10)
     app.job_queue.run_repeating(auto_update_all_profits, interval=300, first=15)
-    app.job_queue.run_repeating(send_unverified_account_reminders, interval=3600, first=60)
+    app.job_queue.run_repeating(send_unverified_account_reminders, interval=43200, first=60)
 
     # رسائل تحفيزية لغير المشتركين ورسائل تطمينية للمشتركين كل 12 ساعة
     app.job_queue.run_repeating(send_periodic_motivation_messages, interval=43200, first=600)
