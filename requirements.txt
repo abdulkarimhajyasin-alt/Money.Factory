@@ -1,3 +1,6 @@
 python-telegram-bot[job-queue]
 python-dotenv
 psycopg2-binary
+fastapi
+uvicorn
+python-jose[cryptography]

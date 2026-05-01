@@ -1,0 +1,779 @@
+import json
+import time
+from datetime import datetime
+
+from fastapi import APIRouter, Depends, Query, HTTPException
+from pydantic import BaseModel
+
+from web_dashboard.auth import get_current_admin
+from web_dashboard.database import get_web_db_connection, release_web_db_connection
+from web_dashboard.services.storage_service import web_db_get as db_get
+from web_dashboard.services.users_service import build_users_list, search_users
+
+
+router = APIRouter()
+
+
+PLANS = {
+    "الباقة الفضية": {
+        "name": "الفضية",
+        "min_deposit": 10,
+        "max_deposit": 100,
+        "profit": "2% يومياً",
+        "withdraw_time": "كل 30 يوم",
+        "withdraw_days": 30
+    },
+    "الباقة الذهبية": {
+        "name": "الذهبية",
+        "min_deposit": 101,
+        "max_deposit": 300,
+        "profit": "2% يومياً",
+        "withdraw_time": "كل 20 يوم",
+        "withdraw_days": 20
+    },
+    "باقة VIP": {
+        "name": "VIP",
+        "min_deposit": 301,
+        "max_deposit": None,
+        "profit": "2% يومياً",
+        "withdraw_time": "كل 10 أيام",
+        "withdraw_days": 10
+    }
+}
+
+
+PLAN_CODE_MAP = {
+    "silver": "الباقة الفضية",
+    "gold": "الباقة الذهبية",
+    "vip": "باقة VIP"
+}
+
+
+class UsernameRequest(BaseModel):
+    username: str
+
+
+class BalanceRequest(BaseModel):
+    username: str
+    amount: float
+
+
+class ChangePlanRequest(BaseModel):
+    username: str
+    plan_code: str
+
+
+def now_str():
+    return time.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def db_set(key, value):
+    conn = None
+    cur = None
+
+    try:
+        conn = get_web_db_connection()
+        cur = conn.cursor()
+
+        cur.execute("""
+            INSERT INTO bot_storage (key, value)
+            VALUES (%s, %s::jsonb)
+            ON CONFLICT (key)
+            DO UPDATE SET value = EXCLUDED.value;
+        """, (key, json.dumps(value, ensure_ascii=False)))
+
+        conn.commit()
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=500, detail=f"Database write error: {str(e)}")
+
+    finally:
+        if cur:
+            cur.close()
+        release_web_db_connection(conn)
+
+
+def load_storage():
+    users = db_get("users", {})
+    data = db_get("data", {})
+
+    if not isinstance(users, dict):
+        raise HTTPException(status_code=500, detail="Invalid users storage format")
+
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=500, detail="Invalid data storage format")
+
+    return users, data
+
+
+def save_data(data):
+    db_set("data", data)
+
+
+def ensure_user_exists(username, users):
+    if username not in users:
+        raise HTTPException(status_code=404, detail="User not found")
+
+
+def add_transaction(data, username, tx_type, amount, note=""):
+    transactions = data.get("transactions", {})
+
+    if username not in transactions or not isinstance(transactions.get(username), list):
+        transactions[username] = []
+
+    transactions[username].append({
+        "type": tx_type,
+        "amount": round(float(amount), 2),
+        "note": note,
+        "time": now_str()
+    })
+
+    data["transactions"] = transactions
+
+
+def get_user_status(data, username):
+    user_statuses = data.get("user_statuses", {})
+    return user_statuses.get(username, "active")
+
+
+def set_user_status(data, username, status):
+    user_statuses = data.get("user_statuses", {})
+    user_statuses[username] = status
+    data["user_statuses"] = user_statuses
+
+
+def get_user_capital(data, username):
+    user_deposits = data.get("user_deposits", {})
+    return round(float(user_deposits.get(username, 0)), 2)
+
+
+def get_user_balance(data, username):
+    user_balance = data.get("user_balance", {})
+    return round(float(user_balance.get(username, 0)), 2)
+
+
+def get_saved_telegram_id(data, username):
+    user_telegram_ids = data.get("user_telegram_ids", {})
+    tg_id = user_telegram_ids.get(username)
+
+    if tg_id is None:
+        return None
+
+    try:
+        return int(tg_id)
+    except Exception:
+        return None
+    
+@router.get("/children/{username}")
+def get_user_children(
+    username: str,
+    admin: str = Depends(get_current_admin)
+):
+    users = build_users_list()
+
+    children = [
+        user for user in users
+        if user.get("referrer") == username
+    ]
+
+    return {
+        "parent": username,
+        "count": len(children),
+        "children": children
+    }    
+
+
+@router.get("/")
+def get_users(
+    search: str = Query(default="", description="بحث عن المستخدم"),
+    admin: str = Depends(get_current_admin)
+):
+    if search:
+        users = search_users(search)
+    else:
+        users = build_users_list()
+
+    return {
+        "count": len(users),
+        "users": users
+    }
+
+
+@router.post("/ban")
+def ban_user(
+    request: UsernameRequest,
+    admin: str = Depends(get_current_admin)
+):
+    username = request.username.strip()
+    users, data = load_storage()
+
+    ensure_user_exists(username, users)
+
+    if get_user_status(data, username) == "banned":
+        return {
+            "success": True,
+            "message": "User already banned",
+            "username": username,
+            "status": "banned"
+        }
+
+    set_user_status(data, username, "banned")
+    add_transaction(data, username, "ban", 0, "تم حظر الحساب من لوحة الويب")
+
+    save_data(data)
+
+    return {
+        "success": True,
+        "message": f"User {username} banned successfully",
+        "username": username,
+        "status": "banned"
+    }
+
+
+@router.post("/unban")
+def unban_user(
+    request: UsernameRequest,
+    admin: str = Depends(get_current_admin)
+):
+    username = request.username.strip()
+    users, data = load_storage()
+
+    ensure_user_exists(username, users)
+
+    set_user_status(data, username, "active")
+    add_transaction(data, username, "unban", 0, "تم فك الحظر من لوحة الويب")
+
+    save_data(data)
+
+    return {
+        "success": True,
+        "message": f"User {username} unbanned successfully",
+        "username": username,
+        "status": "active"
+    }
+
+
+@router.post("/freeze")
+def freeze_user(
+    request: UsernameRequest,
+    admin: str = Depends(get_current_admin)
+):
+    username = request.username.strip()
+    users, data = load_storage()
+
+    ensure_user_exists(username, users)
+
+    if get_user_status(data, username) == "banned":
+        raise HTTPException(status_code=400, detail="Cannot freeze a banned user")
+
+    set_user_status(data, username, "frozen")
+    add_transaction(data, username, "freeze", 0, "تم تجميد الحساب ماليًا من لوحة الويب")
+
+    save_data(data)
+
+    return {
+        "success": True,
+        "message": f"User {username} frozen successfully",
+        "username": username,
+        "status": "frozen"
+    }
+
+
+@router.post("/unfreeze")
+def unfreeze_user(
+    request: UsernameRequest,
+    admin: str = Depends(get_current_admin)
+):
+    username = request.username.strip()
+    users, data = load_storage()
+
+    ensure_user_exists(username, users)
+
+    if get_user_status(data, username) == "banned":
+        raise HTTPException(status_code=400, detail="Cannot unfreeze a banned user")
+
+    set_user_status(data, username, "active")
+    add_transaction(data, username, "unfreeze", 0, "تم فك التجميد من لوحة الويب")
+
+    save_data(data)
+
+    return {
+        "success": True,
+        "message": f"User {username} unfrozen successfully",
+        "username": username,
+        "status": "active"
+    }
+
+
+@router.post("/add-balance")
+def add_balance(
+    request: BalanceRequest,
+    admin: str = Depends(get_current_admin)
+):
+    username = request.username.strip()
+    amount = round(float(request.amount), 2)
+
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Amount must be greater than zero")
+
+    users, data = load_storage()
+    ensure_user_exists(username, users)
+
+    user_balance = data.get("user_balance", {})
+    current_balance = round(float(user_balance.get(username, 0)), 2)
+    new_balance = round(current_balance + amount, 2)
+
+    user_balance[username] = new_balance
+    data["user_balance"] = user_balance
+
+    add_transaction(data, username, "admin_add_balance", amount, "إضافة رصيد من لوحة الويب")
+
+    save_data(data)
+
+    return {
+        "success": True,
+        "message": "Balance added successfully",
+        "username": username,
+        "amount": amount,
+        "old_balance": current_balance,
+        "new_balance": new_balance
+    }
+
+
+@router.post("/subtract-balance")
+def subtract_balance(
+    request: BalanceRequest,
+    admin: str = Depends(get_current_admin)
+):
+    username = request.username.strip()
+    amount = round(float(request.amount), 2)
+
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Amount must be greater than zero")
+
+    users, data = load_storage()
+    ensure_user_exists(username, users)
+
+    user_balance = data.get("user_balance", {})
+    current_balance = round(float(user_balance.get(username, 0)), 2)
+    new_balance = round(current_balance - amount, 2)
+
+    if new_balance < 0:
+        new_balance = 0
+
+    deducted = round(current_balance - new_balance, 2)
+
+    user_balance[username] = new_balance
+    data["user_balance"] = user_balance
+
+    add_transaction(data, username, "admin_subtract_balance", deducted, "خصم رصيد من لوحة الويب")
+
+    save_data(data)
+
+    return {
+        "success": True,
+        "message": "Balance subtracted successfully",
+        "username": username,
+        "requested_amount": amount,
+        "deducted_amount": deducted,
+        "old_balance": current_balance,
+        "new_balance": new_balance
+    }
+
+
+@router.post("/change-plan")
+def change_plan(
+    request: ChangePlanRequest,
+    admin: str = Depends(get_current_admin)
+):
+    username = request.username.strip()
+    plan_code = request.plan_code.strip().lower()
+
+    if plan_code not in PLAN_CODE_MAP:
+        raise HTTPException(status_code=400, detail="Invalid plan code. Use silver, gold, or vip")
+
+    new_plan = PLAN_CODE_MAP[plan_code]
+
+    users, data = load_storage()
+    ensure_user_exists(username, users)
+
+    user_plans = data.get("user_plans", {})
+    old_plan = user_plans.get(username, "NONE")
+
+    user_plans[username] = new_plan
+    data["user_plans"] = user_plans
+
+    now_ts = time.time()
+
+    user_first_deposit_time = data.get("user_first_deposit_time", {})
+    if username not in user_first_deposit_time:
+        user_first_deposit_time[username] = now_ts
+
+    data["user_first_deposit_time"] = user_first_deposit_time
+
+    user_last_withdraw_time = data.get("user_last_withdraw_time", {})
+    user_last_withdraw_time[username] = now_ts
+    data["user_last_withdraw_time"] = user_last_withdraw_time
+
+    add_transaction(
+        data,
+        username,
+        "admin_set_plan",
+        0,
+        f"تغيير الباقة من {old_plan} إلى {new_plan} من لوحة الويب"
+    )
+
+    save_data(data)
+
+    return {
+        "success": True,
+        "message": "Plan changed successfully",
+        "username": username,
+        "old_plan": old_plan,
+        "new_plan": new_plan
+    }
+
+
+@router.post("/reset-withdraw")
+def reset_withdraw(
+    request: UsernameRequest,
+    admin: str = Depends(get_current_admin)
+):
+    username = request.username.strip()
+
+    users, data = load_storage()
+    ensure_user_exists(username, users)
+
+    now_ts = time.time()
+
+    user_first_deposit_time = data.get("user_first_deposit_time", {})
+    if username not in user_first_deposit_time:
+        user_first_deposit_time[username] = now_ts
+
+    data["user_first_deposit_time"] = user_first_deposit_time
+
+    user_last_withdraw_time = data.get("user_last_withdraw_time", {})
+    user_last_withdraw_time[username] = now_ts
+    data["user_last_withdraw_time"] = user_last_withdraw_time
+
+    add_transaction(data, username, "admin_reset_withdraw_cycle", 0, "إعادة ضبط دورة السحب من لوحة الويب")
+
+    save_data(data)
+
+    return {
+        "success": True,
+        "message": "Withdraw cycle reset successfully",
+        "username": username
+    }
+
+
+@router.post("/delete-subscription")
+def delete_subscription(
+    request: UsernameRequest,
+    admin: str = Depends(get_current_admin)
+):
+    username = request.username.strip()
+
+    users, data = load_storage()
+    ensure_user_exists(username, users)
+
+    old_plan = data.get("user_plans", {}).get(username, "NONE")
+    old_capital = get_user_capital(data, username)
+    old_balance = get_user_balance(data, username)
+
+    user_plans = data.get("user_plans", {})
+    user_plans[username] = "NONE"
+    data["user_plans"] = user_plans
+
+    user_balance = data.get("user_balance", {})
+    user_balance[username] = 0
+    data["user_balance"] = user_balance
+
+    user_deposits = data.get("user_deposits", {})
+    user_deposits[username] = 0
+    data["user_deposits"] = user_deposits
+
+    user_last_profit = data.get("user_last_profit", {})
+    user_last_profit[username] = time.time()
+    data["user_last_profit"] = user_last_profit
+
+    for key in [
+        "user_first_deposit_time",
+        "user_last_withdraw_time",
+        "stopped_profit_users",
+        "manual_withdraw_open",
+        "pending_profit_capital_activation"
+    ]:
+        item = data.get(key, {})
+        if isinstance(item, dict):
+            item.pop(username, None)
+            data[key] = item
+
+    user_id = get_saved_telegram_id(data, username)
+
+    if user_id:
+        for key in [
+            "pending_deposit_requests",
+            "pending_withdraw_requests",
+            "capital_withdraw_requests"
+        ]:
+            item = data.get(key, {})
+            if isinstance(item, dict):
+                item.pop(str(user_id), None)
+                item.pop(user_id, None)
+                data[key] = item
+
+    user_deposit_logs = data.get("user_deposit_logs", {})
+    user_deposit_logs[username] = []
+    data["user_deposit_logs"] = user_deposit_logs
+
+    user_withdraw_logs = data.get("user_withdraw_logs", {})
+    user_withdraw_logs[username] = []
+    data["user_withdraw_logs"] = user_withdraw_logs
+
+    add_transaction(
+        data,
+        username,
+        "admin_delete_subscription",
+        0,
+        f"حذف الاشتراك من لوحة الويب | الباقة السابقة: {old_plan} | رأس المال السابق: {old_capital}$ | الرصيد السابق: {old_balance}$"
+    )
+
+    save_data(data)
+
+    return {
+        "success": True,
+        "message": "Subscription deleted successfully",
+        "username": username,
+        "old_plan": old_plan,
+        "old_capital": old_capital,
+        "old_balance": old_balance
+    }
+
+@router.post("/open-withdraw")
+def open_withdraw(
+    request: UsernameRequest,
+    admin: str = Depends(get_current_admin)
+):
+    username = request.username.strip()
+
+    users, data = load_storage()
+    ensure_user_exists(username, users)
+
+    user_plans = data.get("user_plans", {})
+    plan_name = user_plans.get(username)
+
+    if plan_name in [None, "NONE"]:
+        raise HTTPException(status_code=400, detail="User has no active plan")
+
+    if plan_name not in PLANS:
+        raise HTTPException(status_code=400, detail="Unknown user plan")
+
+    manual_withdraw_open = data.get("manual_withdraw_open", {})
+
+    if manual_withdraw_open.get(username, {}).get("is_open", False):
+        return {
+            "success": True,
+            "message": "Withdraw already open",
+            "username": username
+        }
+
+    interval_days = PLANS[plan_name]["withdraw_days"]
+    now_ts = time.time()
+
+    user_first_deposit_time = data.get("user_first_deposit_time", {})
+    if username not in user_first_deposit_time:
+        user_first_deposit_time[username] = now_ts
+    data["user_first_deposit_time"] = user_first_deposit_time
+
+    user_last_withdraw_time = data.get("user_last_withdraw_time", {})
+    original_last_withdraw_time = user_last_withdraw_time.get(username, None)
+
+    user_last_withdraw_time[username] = now_ts - (interval_days * 86400)
+    data["user_last_withdraw_time"] = user_last_withdraw_time
+
+    manual_withdraw_open[username] = {
+        "is_open": True,
+        "original_last_withdraw_time": original_last_withdraw_time,
+        "opened_at": now_ts
+    }
+    data["manual_withdraw_open"] = manual_withdraw_open
+
+    add_transaction(
+        data,
+        username,
+        "admin_open_withdraw",
+        0,
+        "قام الأدمن بفتح السحب للمستخدم من لوحة الويب"
+    )
+
+    save_data(data)
+
+    return {
+        "success": True,
+        "message": "Withdraw opened successfully",
+        "username": username
+    }
+
+
+@router.post("/close-withdraw")
+def close_withdraw(
+    request: UsernameRequest,
+    admin: str = Depends(get_current_admin)
+):
+    username = request.username.strip()
+
+    users, data = load_storage()
+    ensure_user_exists(username, users)
+
+    manual_withdraw_open = data.get("manual_withdraw_open", {})
+    saved_data = manual_withdraw_open.get(username, {})
+
+    if not saved_data.get("is_open", False):
+        raise HTTPException(status_code=400, detail="Manual withdraw is not open for this user")
+
+    original_last_withdraw_time = saved_data.get("original_last_withdraw_time", None)
+
+    user_last_withdraw_time = data.get("user_last_withdraw_time", {})
+
+    if original_last_withdraw_time is None:
+        user_last_withdraw_time.pop(username, None)
+    else:
+        user_last_withdraw_time[username] = float(original_last_withdraw_time)
+
+    data["user_last_withdraw_time"] = user_last_withdraw_time
+
+    manual_withdraw_open.pop(username, None)
+    data["manual_withdraw_open"] = manual_withdraw_open
+
+    add_transaction(
+        data,
+        username,
+        "admin_close_manual_withdraw",
+        0,
+        "قام الأدمن بإيقاف فتح السحب وإعادة الوضع الطبيعي من لوحة الويب"
+    )
+
+    save_data(data)
+
+    return {
+        "success": True,
+        "message": "Withdraw closed successfully",
+        "username": username
+    }
+
+@router.get("/details/{username}")
+def get_user_details(
+    username: str,
+    admin: str = Depends(get_current_admin)
+):
+    users = db_get("users", {})
+    data = db_get("data", {})
+
+    if username not in users:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    password = users.get(username, "")
+
+    # --- Financial ---
+    balance = round(float(data.get("user_balance", {}).get(username, 0)), 2)
+    capital = round(float(data.get("user_deposits", {}).get(username, 0)), 2)
+    profit_only = round(balance - capital, 2)
+    if profit_only < 0:
+        profit_only = 0
+
+    # --- Basic ---
+    telegram_id = data.get("user_telegram_ids", {}).get(username)
+    full_name = data.get("user_full_name", {}).get(username, "غير متوفر")
+    residence = data.get("user_residence", {}).get(username, "غير متوفر")
+
+    # --- Status ---
+    plan = data.get("user_plans", {}).get(username, "NONE")
+    status = data.get("user_statuses", {}).get(username, "active")
+    verified = bool(data.get("verified_users", {}).get(username, False))
+
+    # --- Referral ---
+    user_referrer = data.get("user_referrer", {})
+    referrer = user_referrer.get(username, "بدون دعوة")
+
+    children_count = sum(
+        1 for child, parent in user_referrer.items()
+        if parent == username
+    )
+
+    # --- Withdraw System ---
+    manual_withdraw_open = data.get("manual_withdraw_open", {}).get(username, {})
+    is_withdraw_open = bool(manual_withdraw_open.get("is_open", False))
+
+    first_deposit_time = data.get("user_first_deposit_time", {}).get(username)
+    last_withdraw_time = data.get("user_last_withdraw_time", {}).get(username)
+
+    # --- Logs ---
+    transactions = data.get("transactions", {}).get(username, [])
+    deposits = data.get("user_deposit_logs", {}).get(username, [])
+    withdraws = data.get("user_withdraw_logs", {}).get(username, [])
+
+    # --- Identity ---
+    identity_photos = data.get("user_identity_photos", {}).get(username, {})
+    front_id_file_id = identity_photos.get("front_id_file_id")
+    back_id_file_id = identity_photos.get("back_id_file_id")
+
+    front_id_url = None
+    back_id_url = None
+
+    if front_id_file_id:
+        try:
+            from web_dashboard.routers.financial_router import build_telegram_file_url
+            front_id_url = build_telegram_file_url(front_id_file_id)
+        except:
+            pass
+
+    if back_id_file_id:
+        try:
+            from web_dashboard.routers.financial_router import build_telegram_file_url
+            back_id_url = build_telegram_file_url(back_id_file_id)
+        except:
+            pass
+
+    return {
+        # Basic
+        "username": username,
+        "password": password,
+        "telegram_id": telegram_id,
+        "full_name": full_name,
+        "residence": residence,
+
+        # Financial
+        "balance": balance,
+        "capital": capital,
+        "profit_only": profit_only,
+
+        # Status
+        "plan": plan,
+        "status": status,
+        "verified": verified,
+
+        # Referral
+        "referrer": referrer,
+        "children_count": children_count,
+
+        # Withdraw
+        "manual_withdraw_open": is_withdraw_open,
+        "first_deposit_time": first_deposit_time,
+        "last_withdraw_time": last_withdraw_time,
+
+        # Logs
+        "transactions": transactions,
+        "deposits": deposits,
+        "withdraws": withdraws,
+
+        "transactions_count": len(transactions),
+        "deposits_count": len(deposits),
+        "withdraws_count": len(withdraws),
+
+        # Identity
+        "front_id_url": front_id_url,
+        "back_id_url": back_id_url
+    }

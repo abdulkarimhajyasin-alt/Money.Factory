@@ -694,6 +694,18 @@ def save_data():
 
     db_set("data", data)
 
+def reload_storage_from_db():
+    """
+    يعيد تحميل آخر نسخة من PostgreSQL إلى ذاكرة البوت.
+    مهم جدًا بعد أي تعديل يتم من لوحة الويب حتى لا يستمر البوت بالعمل على نسخة قديمة.
+    """
+    try:
+        load_users()
+        load_chat_ids()
+        load_data()
+    except Exception as e:
+        print(f"[RELOAD_STORAGE_ERROR] {e}")    
+
 def is_support_blocked(username):
     return bool(support_blocked_users.get(username, False))
 
@@ -3601,6 +3613,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     global support_employees_enabled
 
+    reload_storage_from_db()
+
     user = update.message.from_user
     user_id = user.id
     text = update.message.text.strip() if update.message.text else ""
@@ -5894,6 +5908,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # =========================
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    reload_storage_from_db()
+
     user_id = update.message.from_user.id
     state = user_states.get(user_id)
 
@@ -6796,6 +6813,9 @@ async def handle_admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
     global subscriptions_open
     global bot_maintenance_mode
     global admin_last_batch_id
+
+    reload_storage_from_db()
+
     query = update.callback_query
     try:
         await query.answer()
