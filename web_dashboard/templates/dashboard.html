@@ -757,21 +757,33 @@
         let ind = "&nbsp;".repeat(l * 6);
         return `<tr data-parent="${safe(p)}" class="${l ? "child" : ""}"><td>${ind}${l ? "↳ " : ""}<button class="blue" onclick="details('${safe(u.username)}')">${safe(u.username)}</button></td><td>${safe(u.password)}</td><td>${safe(u.telegram_id)}</td><td>${safe(u.full_name)}</td><td>${safe(u.residence)}</td><td>${safe(u.plan)}</td><td>${badge(u.status)}</td><td>${u.verified ? "✅" : "❌"}</td><td>${money(u.capital)}</td><td>${money(u.balance)}</td><td>${money(u.profit_only)}</td><td>${u.children_count || 0} <button class="dark" onclick="children('${safe(u.username)}',${l + 1},this.closest('tr'))">View</button></td><td><button class="purple" onclick="details('${safe(u.username)}')">Control</button></td></tr>`;
       }
-      function children(name, l, tr) {
-        let old = document.querySelectorAll(
-          `tr[data-parent="${CSS.escape(name)}"]`,
-        );
-        if (old.length) {
-          old.forEach((x) => x.remove());
-          return;
+
+
+      function children(name, level, parentRow) {
+        const existingRows = document.querySelectorAll(
+                 `tr[data-parent="${CSS.escape(name)}"]`
+            );
+
+        // إذا الأبناء ظاهرين → أخفِهم
+        if (existingRows.length > 0) {
+                existingRows.forEach(row => row.remove());
+                return;
         }
-        tr.insertAdjacentHTML(
-          "afterend",
-          U.filter((x) => x.referrer === name)
-            .map((c) => row(c, l, name))
-            .join(""),
-        );
-      }
+
+        // إذا غير ظاهرين → أظهرهم
+        const childrenList = U.filter(user => user.referrer === name);
+
+        if (childrenList.length === 0) {
+            alert("لا يوجد أبناء لهذا المستخدم");
+            return;
+        }
+
+        const rowsHtml = childrenList
+            .map(child => row(child, level, name))
+            .join("");
+
+        parentRow.insertAdjacentHTML("afterend", rowsHtml);
+        }
       async function details(name) {
         show("details");
         let u = await api("/users/details/" + encodeURIComponent(name));
