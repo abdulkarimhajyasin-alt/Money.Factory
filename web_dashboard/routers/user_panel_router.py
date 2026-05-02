@@ -56,23 +56,27 @@ PLAN_CODE_MAP = {
 def now_str():
     return time.strftime("%Y-%m-%d %H:%M:%S")
 
-def send_telegram_message(chat_id: int, text: str):
+def send_telegram_message(chat_id: int, text: str, reply_markup=None):
     if not BOT_TOKEN:
         return False
 
     try:
+        payload = {
+            "chat_id": chat_id,
+            "text": text,
+            "parse_mode": "HTML"
+        }
+
+        if reply_markup:
+            payload["reply_markup"] = reply_markup
+
         response = requests.post(
             f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-            json={
-                "chat_id": chat_id,
-                "text": text,
-                "parse_mode": "HTML"
-            },
+            json=payload,
             timeout=10
         )
 
         result = response.json()
-
         return bool(result.get("ok"))
 
     except Exception as e:
@@ -505,7 +509,18 @@ def send_support_message(
         "افتح البوت كأدمن واستخدم نفس نظام الرد على الدعم الموجود لديك."
     )
 
-    sent = send_telegram_message(ADMIN_ID, admin_text)
+    reply_markup = {
+    "inline_keyboard": [
+        [
+            {
+                "text": "✉️ رد على المستخدم",
+                "callback_data": f"reply_support_{telegram_id}"
+            }
+        ]
+                       ]
+           }
+
+    sent = send_telegram_message(ADMIN_ID, admin_text, reply_markup=reply_markup)
 
     if not sent:
         support_messages[-1]["status"] = "saved_but_telegram_failed"
