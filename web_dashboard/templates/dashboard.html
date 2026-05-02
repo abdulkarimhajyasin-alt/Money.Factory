@@ -452,13 +452,59 @@
             <div class="panel">
                 <h3>⚡ أوامر سريعة</h3>
                 <div class="actions-grid">
-                    <button class="action-card" onclick="showSection('users')"><span>👥</span>المستخدمون</button>
-                    <button class="action-card" onclick="showSection('financial')"><span>📥</span>طلبات الإيداع</button>
-                    <button class="action-card" onclick="showSection('financial')"><span>💸</span>طلبات السحب</button>
-                    <button class="action-card" onclick="showSection('financial')"><span>🏦</span>سحب رأس المال</button>
-                    <button class="action-card" onclick="showSection('financial')"><span>🪪</span>التوثيق</button>
-                    <button class="action-card" onclick="summaryModal()"><span>📊</span>ملخص مالي</button>
-                </div>
+    
+    <button class="action-card" onclick="openDeletedAccountsModal()">
+        <span>🗑️</span>سجل الحسابات المحذوفة
+    </button>
+
+    <button class="action-card" onclick="summaryModal()">
+        <span>📊</span>ملخص مالي
+    </button>
+
+    <button class="action-card" onclick="toggleSubscriptions()">
+        <span>⛔</span>إيقاف/تشغيل الاشتراك
+    </button>
+
+    <button class="action-card" onclick="subscriptionsStatusModal()">
+        <span>📌</span>حالة الاشتراك
+    </button>
+
+    <button class="action-card" onclick="toggleBotMaintenance()">
+        <span>⏯️</span>إيقاف/تشغيل البوت
+    </button>
+
+    <button class="action-card" onclick="botStatusModal()">
+        <span>🛠️</span>حالة البوت
+    </button>
+
+    <button class="action-card" onclick="broadcastModal()">
+        <span>📢</span>إرسال رسالة للجميع
+    </button>
+
+    <button class="action-card" onclick="planMessageModal()">
+        <span>📨</span>إرسال رسالة حسب الباقة
+    </button>
+
+    <button class="action-card" onclick="usersFilterModal()">
+        <span>📂</span>فلترة المستخدمين
+    </button>
+
+    <button class="action-card" onclick="advancedStatsModal()">
+        <span>📈</span>إحصائيات متقدمة
+    </button>
+
+    <button class="action-card" onclick="searchUserModal()">
+        <span>🔍</span>بحث عن مستخدم
+    </button>
+
+    <button class="action-card" onclick="deleteUserModal()">
+        <span>🗑️</span>حذف مستخدم
+    </button>
+
+    <button class="action-card" onclick="toggleSupportEmployees()">
+        <span>👨‍💼</span>تشغيل موظفي الدعم
+    </button>
+</div>
 
                 <h3 class="section-title">📦 الباقات</h3>
                 <div class="cards-grid">
@@ -468,12 +514,7 @@
                     <div class="card"><div class="card-title">بدون باقة</div><div class="card-value" id="no_plan_users">0</div></div>
                 </div>
 
-                <h3 class="section-title">⏳ الطلبات المعلقة</h3>
-                <div class="cards-grid">
-                    <div class="card"><div class="card-title">إيداعات</div><div class="card-value" id="pending_deposits">0</div></div>
-                    <div class="card"><div class="card-title">سحوبات أرباح</div><div class="card-value" id="pending_withdraws">0</div></div>
-                    <div class="card"><div class="card-title">سحب رأس المال</div><div class="card-value" id="pending_capital_withdraws">0</div></div>
-                </div>
+                
             </div>
 
             <div class="panel">
@@ -1397,6 +1438,120 @@ function summaryModal() {
             <div class="card"><div class="card-title">الأرباح</div><div class="card-value">${document.getElementById("total_profit_only").innerText}</div></div>
         </div>
     `);
+}
+
+function subscriptionsStatusModal() {
+    openModal("📌 حالة الاشتراك", `
+        <div class="cards-grid">
+            <div class="card">
+                <div class="card-title">حالة الاشتراك</div>
+                <div class="card-value">غير مربوط بعد</div>
+                <div class="card-note">يحتاج API من البوت لقراءة subscriptions_open</div>
+            </div>
+        </div>
+    `);
+}
+
+function botStatusModal() {
+    openModal("🛠️ حالة البوت", `
+        <div class="cards-grid">
+            <div class="card">
+                <div class="card-title">حالة البوت</div>
+                <div class="card-value">غير مربوط بعد</div>
+                <div class="card-note">يحتاج API من البوت لقراءة bot_maintenance_mode</div>
+            </div>
+        </div>
+    `);
+}
+
+function openDeletedAccountsModal() {
+    openModal("🗑️ سجل الحسابات المحذوفة", `
+        <p>هذا الزر ظاهر الآن مثل لوحة تيليغرام.</p>
+        <p>لتفعيله نحتاج Endpoint يعيد:</p>
+        <code>deleted_accounts_log</code>
+    `);
+}
+
+function broadcastModal() {
+    openModal("📢 إرسال رسالة للجميع", `
+        <textarea id="broadcastText" rows="6" placeholder="اكتب الرسالة التي تريد إرسالها لجميع المستخدمين"></textarea>
+        <button class="btn-blue" onclick="alert('يحتاج Backend API للإرسال الجماعي')">إرسال</button>
+    `);
+}
+
+function planMessageModal() {
+    openModal("📨 إرسال رسالة حسب الباقة", `
+        <select id="planMsgPlan">
+            <option value="الباقة الفضية">الباقة الفضية</option>
+            <option value="الباقة الذهبية">الباقة الذهبية</option>
+            <option value="باقة VIP">باقة VIP</option>
+            <option value="NONE">بدون باقة</option>
+        </select>
+
+        <textarea id="planMsgText" rows="6" placeholder="اكتب الرسالة"></textarea>
+
+        <button class="btn-blue" onclick="alert('يحتاج Backend API للإرسال حسب الباقة')">إرسال</button>
+    `);
+}
+
+function usersFilterModal() {
+    openModal("📂 فلترة المستخدمين", `
+        <p>الفلاتر موجودة بالفعل داخل صفحة Users Tree:</p>
+        <button class="btn-blue" onclick="closeModal(); showSection('users');">فتح صفحة المستخدمين</button>
+    `);
+}
+
+function advancedStatsModal() {
+    openModal("📈 إحصائيات متقدمة", `
+        <div class="cards-grid">
+            <div class="card">
+                <div class="card-title">إجمالي المستخدمين</div>
+                <div class="card-value">${document.getElementById("total_users").innerText}</div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">إجمالي رأس المال</div>
+                <div class="card-value">${document.getElementById("total_capital").innerText}</div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">إجمالي الأرباح</div>
+                <div class="card-value">${document.getElementById("total_profit_only").innerText}</div>
+            </div>
+        </div>
+    `);
+}
+
+function searchUserModal() {
+    openModal("🔍 بحث عن مستخدم", `
+        <input id="modalSearchUsername" placeholder="اكتب اسم المستخدم">
+        <button class="btn-blue" onclick="
+            const u = document.getElementById('modalSearchUsername').value.trim();
+            if (!u) return alert('اكتب اسم المستخدم');
+            closeModal();
+            openUserDetails(u);
+        ">بحث</button>
+    `);
+}
+
+function deleteUserModal() {
+    openModal("🗑️ حذف مستخدم", `
+        <p style="color:#fecaca;">تحذير: حذف المستخدم بالكامل يحتاج API خاص غير موجود في النسخة الحالية.</p>
+        <input id="deleteUsernameInput" placeholder="Username">
+        <button class="btn-red" onclick="alert('يحتاج Backend API لحذف المستخدم بالكامل')">حذف</button>
+    `);
+}
+
+async function toggleSubscriptions() {
+    alert("الزر ظاهر الآن، لكنه يحتاج Backend API يغيّر subscriptions_open داخل data.");
+}
+
+async function toggleBotMaintenance() {
+    alert("الزر ظاهر الآن، لكنه يحتاج Backend API يغيّر bot_maintenance_mode داخل data.");
+}
+
+async function toggleSupportEmployees() {
+    alert("الزر ظاهر الآن، لكنه يحتاج Backend API يغيّر support_employees_enabled داخل data.");
 }
 
 window.onload = async function () {
