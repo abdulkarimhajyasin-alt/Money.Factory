@@ -9258,7 +9258,7 @@ def main():
     app.job_queue.run_repeating(send_unverified_account_reminders, interval=43200, first=60)
 
     # رسائل تحفيزية لغير المشتركين ورسائل تطمينية للمشتركين كل 12 ساعة
-    app.job_queue.run_repeating(send_periodic_motivation_messages, interval=43200, first=600)
+    #app.job_queue.run_repeating(send_periodic_motivation_messages, interval=43200, first=600)
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("k", k))

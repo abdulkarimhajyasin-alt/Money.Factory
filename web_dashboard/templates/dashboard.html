@@ -832,6 +832,33 @@ function renderCharts(d) {
     if (usersChart) usersChart.destroy();
     if (plansChart) plansChart.destroy();
 
+    const percentPlugin = {
+        id: "percentPlugin",
+        afterDraw(chart) {
+            const {ctx} = chart;
+            const dataset = chart.data.datasets[0];
+            const total = dataset.data.reduce((a, b) => Number(a) + Number(b), 0);
+
+            if (!total) return;
+
+            chart.getDatasetMeta(0).data.forEach((arc, index) => {
+                const value = Number(dataset.data[index]);
+                if (!value) return;
+
+                const percent = ((value / total) * 100).toFixed(1) + "%";
+                const position = arc.tooltipPosition();
+
+                ctx.save();
+                ctx.fillStyle = "#ffffff";
+                ctx.font = "bold 13px Tahoma";
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                ctx.fillText(percent, position.x, position.y);
+                ctx.restore();
+            });
+        }
+    };
+
     usersChart = new Chart(document.getElementById("usersChart"), {
         type: "doughnut",
         data: {
@@ -843,8 +870,25 @@ function renderCharts(d) {
         },
         options: {
             maintainAspectRatio: false,
-            plugins: {legend: {labels: {color: "#fff"}}}
-        }
+            cutout: "55%",
+            plugins: {
+                legend: {
+                    labels: {color: "#fff"}
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const data = context.dataset.data;
+                            const total = data.reduce((a, b) => Number(a) + Number(b), 0);
+                            const value = Number(context.raw || 0);
+                            const percent = total ? ((value / total) * 100).toFixed(1) : 0;
+                            return `${context.label}: ${value} (${percent}%)`;
+                        }
+                    }
+                }
+            }
+        },
+        plugins: [percentPlugin]
     });
 
     plansChart = new Chart(document.getElementById("plansChart"), {
@@ -858,8 +902,25 @@ function renderCharts(d) {
         },
         options: {
             maintainAspectRatio: false,
-            plugins: {legend: {labels: {color: "#fff"}}}
-        }
+            cutout: "55%",
+            plugins: {
+                legend: {
+                    labels: {color: "#fff"}
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const data = context.dataset.data;
+                            const total = data.reduce((a, b) => Number(a) + Number(b), 0);
+                            const value = Number(context.raw || 0);
+                            const percent = total ? ((value / total) * 100).toFixed(1) : 0;
+                            return `${context.label}: ${value} (${percent}%)`;
+                        }
+                    }
+                }
+            }
+        },
+        plugins: [percentPlugin]
     });
 }
 
