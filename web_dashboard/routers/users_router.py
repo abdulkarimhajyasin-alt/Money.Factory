@@ -710,6 +710,39 @@ def get_user_details(
     first_deposit_time = data.get("user_first_deposit_time", {}).get(username)
     last_withdraw_time = data.get("user_last_withdraw_time", {}).get(username)
 
+        # --- Countdown Data ---
+    now_ts = time.time()
+
+    last_profit_time = data.get("user_last_profit", {}).get(username)
+    next_profit_time = None
+    next_profit_seconds = None
+
+    if last_profit_time:
+        next_profit_time = float(last_profit_time) + 86400
+        next_profit_seconds = int(next_profit_time - now_ts)
+        if next_profit_seconds < 0:
+            next_profit_seconds = 0
+
+    next_withdraw_time = None
+    withdraw_countdown_seconds = None
+
+    if plan in PLANS:
+        interval_days = PLANS[plan]["withdraw_days"]
+
+        base_withdraw_time = None
+
+        if last_withdraw_time:
+            base_withdraw_time = float(last_withdraw_time)
+        elif first_deposit_time:
+            base_withdraw_time = float(first_deposit_time)
+
+        if base_withdraw_time:
+            next_withdraw_time = base_withdraw_time + (interval_days * 86400)
+            withdraw_countdown_seconds = int(next_withdraw_time - now_ts)
+
+            if withdraw_countdown_seconds < 0:
+                withdraw_countdown_seconds = 0
+
     # --- Logs ---
     transactions = data.get("transactions", {}).get(username, [])
     deposits = data.get("user_deposit_logs", {}).get(username, [])
@@ -763,6 +796,11 @@ def get_user_details(
         "manual_withdraw_open": is_withdraw_open,
         "first_deposit_time": first_deposit_time,
         "last_withdraw_time": last_withdraw_time,
+
+        "next_profit_time": next_profit_time,
+        "next_profit_seconds": next_profit_seconds,
+        "next_withdraw_time": next_withdraw_time,
+        "withdraw_countdown_seconds": withdraw_countdown_seconds,
 
         # Logs
         "transactions": transactions,
