@@ -471,47 +471,90 @@ def deleted_accounts(admin: str = Depends(get_current_admin)):
 def send_private_message(request: PrivateMessageRequest, admin: str = Depends(get_current_admin)):
     data = db_get("data", {})
     users = db_get("users", {})
+
     username = request.username.strip()
+
     if username not in users:
         raise HTTPException(status_code=404, detail="User not found")
+
     tg_id = get_tg_id(data, username)
+
     if not tg_id:
         raise HTTPException(status_code=400, detail="Telegram ID not found")
-    ok = send_telegram(tg_id, f"📨 رسالة من الإدارة:\\n\\n{request.message}")
-    add_transaction(data, username, "admin_private_message", 0, f"رسالة من لوحة الويب: {request.message[:80]}")
+
+    msg = request.message.replace("\\n", "\n")
+
+    ok = send_telegram(
+        tg_id,
+        f"📨 رسالة من الإدارة:\n\n{msg}"
+    )
+
+    add_transaction(
+        data,
+        username,
+        "admin_private_message",
+        0,
+        f"رسالة من لوحة الويب: {request.message[:80]}"
+    )
+
     save_data(data)
+
     return {"success": ok}
 
 
 @router.post("/broadcast")
 def broadcast(request: MessageRequest, admin: str = Depends(get_current_admin)):
     chat_ids = db_get("chat_ids", [])
+
+    msg = request.message.replace("\\n", "\n")
+
     success = 0
     failed = 0
+
     for uid in chat_ids:
-        if send_telegram(uid, request.message):
+        if send_telegram(uid, msg):
             success += 1
         else:
             failed += 1
-    return {"success": True, "sent": success, "failed": failed}
+
+    return {
+        "success": True,
+        "sent": success,
+        "failed": failed
+    }
 
 
 @router.post("/plan-message")
 def plan_message(request: PlanMessageRequest, admin: str = Depends(get_current_admin)):
     data = db_get("data", {})
+
     target_users = [
-        username for username, plan in data.get("user_plans", {}).items()
+        username
+        for username, plan in data.get("user_plans", {}).items()
         if plan == request.plan
     ]
+
+    msg = request.message.replace("\\n", "\n")
+
     success = 0
     failed = 0
+
     for username in target_users:
         tg_id = get_tg_id(data, username)
-        if send_telegram(tg_id, f"📨 رسالة من الإدارة لمشتركي {request.plan}:\\n\\n{request.message}"):
+
+        if send_telegram(
+            tg_id,
+            f"📨 رسالة من الإدارة لمشتركي {request.plan}:\n\n{msg}"
+        ):
             success += 1
         else:
             failed += 1
-    return {"success": True, "sent": success, "failed": failed}
+
+    return {
+        "success": True,
+        "sent": success,
+        "failed": failed
+    }
 
 
 @router.post("/delete-user")
