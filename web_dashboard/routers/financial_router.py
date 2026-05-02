@@ -1,47 +1,131 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import RedirectResponse
+from pydantic import BaseModel
+import json
+import time
+import requests
 
 from web_dashboard.auth import get_current_admin
 from web_dashboard.services.storage_service import web_db_get as db_get
+from web_dashboard.database import get_web_db_connection, release_web_db_connection
+from web_dashboard.config import BOT_TOKEN
 
 router = APIRouter()
+ADMIN_ID = 5685737658
 
-import requests
-from web_dashboard.config import BOT_TOKEN
-from fastapi.responses import RedirectResponse
+
+class UserIdRequest(BaseModel):
+    user_id: int
+
+
+class UsernameRequest(BaseModel):
+    username: str
+
+
+class MessageRequest(BaseModel):
+    message: str
+
+
+class PrivateMessageRequest(BaseModel):
+    username: str
+    message: str
+
+
+class PlanMessageRequest(BaseModel):
+    plan: str
+    message: str
+
+
+def now_str():
+    return time.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def db_set(key, value):
+    conn = None
+    cur = None
+    try:
+        conn = get_web_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO bot_storage (key, value)
+            VALUES (%s, %s::jsonb)
+            ON CONFLICT (key)
+            DO UPDATE SET value = EXCLUDED.value;
+        """, (key, json.dumps(value, ensure_ascii=False)))
+        conn.commit()
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if cur:
+            cur.close()
+        release_web_db_connection(conn)
+
+
+def save_data(data):
+    db_set("data", data)
+
+
+def save_users(users):
+    db_set("users", users)
+
+
+def add_transaction(data, username, tx_type, amount=0, note=""):
+    transactions = data.get("transactions", {})
+    transactions.setdefault(username, []).append({
+        "type": tx_type,
+        "amount": round(float(amount), 2),
+        "note": note,
+        "time": now_str()
+    })
+    data["transactions"] = transactions
+
+
+def send_telegram(chat_id, text):
+    if not BOT_TOKEN or not chat_id:
+        return False
+    try:
+        r = requests.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+            json={"chat_id": int(chat_id), "text": text},
+            timeout=10
+        )
+        return bool(r.json().get("ok"))
+    except Exception:
+        return False
+
+
+def get_tg_id(data, username):
+    tg_id = data.get("user_telegram_ids", {}).get(username)
+    try:
+        return int(tg_id) if tg_id is not None else None
+    except Exception:
+        return None
 
 
 def build_telegram_file_url(file_id):
-    if not file_id:
+    if not file_id or not BOT_TOKEN:
         return None
-
     try:
         response = requests.get(
             f"https://api.telegram.org/bot{BOT_TOKEN}/getFile",
             params={"file_id": file_id},
             timeout=10
         )
-
         result = response.json()
-
         if not result.get("ok"):
             return None
-
-        file_path = result["result"]["file_path"]
-
-        return f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}"
-
+        return f"https://api.telegram.org/file/bot{BOT_TOKEN}/{result['result']['file_path']}"
     except Exception:
         return None
+
 
 @router.get("/pending-deposits")
 def get_pending_deposits(admin: str = Depends(get_current_admin)):
     data = db_get("data", {})
-
-    pending_deposit_requests = data.get("pending_deposit_requests", {})
-
     result = []
-
-    for user_id, request in pending_deposit_requests.items():
+    for user_id, request in data.get("pending_deposit_requests", {}).items():
         result.append({
             "user_id": user_id,
             "username": request.get("username", "غير معروف"),
@@ -54,67 +138,15 @@ def get_pending_deposits(admin: str = Depends(get_current_admin)):
             "old_capital": request.get("old_capital"),
             "final_capital": request.get("final_capital")
         })
-
-    return {
-        "count": len(result),
-        "pending_deposits": result
-    }
-
-from pydantic import BaseModel
-from fastapi import HTTPException
-import json
-import time
-
-from web_dashboard.database import get_web_db_connection, release_web_db_connection
-
-
-class DepositActionRequest(BaseModel):
-    user_id: int
-
-
-def now_str():
-    return time.strftime("%Y-%m-%d %H:%M:%S")
-
-
-def db_set(key, value):
-    conn = None
-    cur = None
-
-    try:
-        conn = get_web_db_connection()
-        cur = conn.cursor()
-
-        cur.execute("""
-            INSERT INTO bot_storage (key, value)
-            VALUES (%s, %s::jsonb)
-            ON CONFLICT (key)
-            DO UPDATE SET value = EXCLUDED.value;
-        """, (key, json.dumps(value, ensure_ascii=False)))
-
-        conn.commit()
-
-    except Exception as e:
-        if conn:
-            conn.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
-
-    finally:
-        if cur:
-            cur.close()
-        release_web_db_connection(conn)
+    return {"count": len(result), "pending_deposits": result}
 
 
 @router.post("/approve-deposit")
-def approve_deposit(
-    request: DepositActionRequest,
-    admin: str = Depends(get_current_admin)
-):
+def approve_deposit(request: UserIdRequest, admin: str = Depends(get_current_admin)):
     data = db_get("data", {})
     user_id = request.user_id
-
     pending = data.get("pending_deposit_requests", {})
     req = pending.get(str(user_id)) or pending.get(user_id)
-
     if not req:
         raise HTTPException(status_code=404, detail="Deposit request not found")
 
@@ -129,154 +161,89 @@ def approve_deposit(
     user_last_profit = data.get("user_last_profit", {})
     user_first_deposit_time = data.get("user_first_deposit_time", {})
     user_deposit_logs = data.get("user_deposit_logs", {})
-    transactions = data.get("transactions", {})
 
     if req_type == "topup_deposit":
-        old_capital = round(float(user_deposits.get(username, 0)), 2)
-        old_balance = round(float(user_balance.get(username, 0)), 2)
-
-        user_deposits[username] = round(old_capital + amount, 2)
-        user_balance[username] = round(old_balance + amount, 2)
-
-        user_deposit_logs.setdefault(username, []).append({
-            "amount": amount,
-            "time": now_str(),
-            "status": "approved",
-            "type": "topup_deposit",
-            "note": "تمت الموافقة على إيداع جديد من لوحة الويب"
-        })
-
-        transactions.setdefault(username, []).append({
-            "type": "topup_deposit_approved",
-            "amount": amount,
-            "note": "إيداع جديد من لوحة الويب",
-            "time": now_str()
-        })
-
+        user_deposits[username] = round(float(user_deposits.get(username, 0)) + amount, 2)
+        user_balance[username] = round(float(user_balance.get(username, 0)) + amount, 2)
+        log_type = "topup_deposit"
+        tx_type = "topup_deposit_approved"
+        note = "إيداع جديد من لوحة الويب"
     elif req_type == "plan_change":
         old_plan = req.get("old_plan", user_plans.get(username, "NONE"))
         new_plan = req.get("new_plan", plan)
-
         user_balance[username] = round(float(user_balance.get(username, 0)) + amount, 2)
         user_deposits[username] = round(float(user_deposits.get(username, 0)) + amount, 2)
         user_plans[username] = new_plan
         user_last_profit[username] = time.time()
-
-        transactions.setdefault(username, []).append({
-            "type": "plan_change_approved",
-            "amount": amount,
-            "note": f"تغيير الباقة من {old_plan} إلى {new_plan} من لوحة الويب",
-            "time": now_str()
-        })
-
+        log_type = "plan_change"
+        tx_type = "plan_change_approved"
+        note = f"تغيير الباقة من {old_plan} إلى {new_plan} من لوحة الويب"
     else:
         user_balance[username] = amount
         user_deposits[username] = amount
         user_plans[username] = plan
         user_last_profit[username] = time.time()
-
         if username not in user_first_deposit_time:
             user_first_deposit_time[username] = time.time()
+        log_type = "new_deposit"
+        tx_type = "deposit_approved"
+        note = f"تفعيل {plan} من لوحة الويب"
 
-        user_deposit_logs.setdefault(username, []).append({
-            "amount": amount,
-            "time": now_str(),
-            "status": "approved",
-            "type": "new_deposit",
-            "note": f"تمت الموافقة على إيداع وتفعيل {plan} من لوحة الويب"
-        })
+    user_deposit_logs.setdefault(username, []).append({
+        "amount": amount,
+        "time": now_str(),
+        "status": "approved",
+        "type": log_type,
+        "note": note
+    })
 
-        transactions.setdefault(username, []).append({
-            "type": "deposit_approved",
-            "amount": amount,
-            "note": f"تفعيل {plan} من لوحة الويب",
-            "time": now_str()
-        })
-
-    pending.pop(str(user_id), None)
-    pending.pop(user_id, None)
-
-    data["pending_deposit_requests"] = pending
     data["user_balance"] = user_balance
     data["user_deposits"] = user_deposits
     data["user_plans"] = user_plans
     data["user_last_profit"] = user_last_profit
     data["user_first_deposit_time"] = user_first_deposit_time
     data["user_deposit_logs"] = user_deposit_logs
-    data["transactions"] = transactions
-
-    db_set("data", data)
-
-    return {
-        "success": True,
-        "message": "Deposit approved successfully",
-        "username": username,
-        "amount": amount
-    }
-
-
-@router.post("/reject-deposit")
-def reject_deposit(
-    request: DepositActionRequest,
-    admin: str = Depends(get_current_admin)
-):
-    data = db_get("data", {})
-    user_id = request.user_id
-
-    pending = data.get("pending_deposit_requests", {})
-    req = pending.get(str(user_id)) or pending.get(user_id)
-
-    if not req:
-        raise HTTPException(status_code=404, detail="Deposit request not found")
-
-    username = req.get("username")
-    amount = round(float(req.get("amount", 0)), 2)
-    req_type = req.get("type", "new_deposit")
-
-    user_deposit_logs = data.get("user_deposit_logs", {})
-    transactions = data.get("transactions", {})
-
-    if username:
-        user_deposit_logs.setdefault(username, []).append({
-            "amount": amount,
-            "time": now_str(),
-            "status": "rejected",
-            "type": req_type,
-            "note": "تم رفض طلب الإيداع من لوحة الويب"
-        })
-
-        transactions.setdefault(username, []).append({
-            "type": "deposit_rejected",
-            "amount": amount,
-            "note": "تم رفض طلب الإيداع من لوحة الويب",
-            "time": now_str()
-        })
+    add_transaction(data, username, tx_type, amount, note)
 
     pending.pop(str(user_id), None)
     pending.pop(user_id, None)
-
     data["pending_deposit_requests"] = pending
-    data["user_deposit_logs"] = user_deposit_logs
-    data["transactions"] = transactions
 
-    db_set("data", data)
+    save_data(data)
+    send_telegram(user_id, f"✅ تمت الموافقة على الإيداع بقيمة {amount}$")
+    return {"success": True, "username": username, "amount": amount}
 
-    return {
-        "success": True,
-        "message": "Deposit rejected successfully",
-        "username": username,
-        "amount": amount
-    }
+
+@router.post("/reject-deposit")
+def reject_deposit(request: UserIdRequest, admin: str = Depends(get_current_admin)):
+    data = db_get("data", {})
+    pending = data.get("pending_deposit_requests", {})
+    req = pending.get(str(request.user_id)) or pending.get(request.user_id)
+    if not req:
+        raise HTTPException(status_code=404, detail="Deposit request not found")
+    username = req.get("username")
+    amount = round(float(req.get("amount", 0)), 2)
+    data.setdefault("user_deposit_logs", {}).setdefault(username, []).append({
+        "amount": amount,
+        "time": now_str(),
+        "status": "rejected",
+        "type": req.get("type", "new_deposit"),
+        "note": "تم رفض طلب الإيداع من لوحة الويب"
+    })
+    add_transaction(data, username, "deposit_rejected", amount, "تم رفض طلب الإيداع من لوحة الويب")
+    pending.pop(str(request.user_id), None)
+    pending.pop(request.user_id, None)
+    data["pending_deposit_requests"] = pending
+    save_data(data)
+    send_telegram(request.user_id, "❌ تم رفض طلب الإيداع")
+    return {"success": True, "username": username, "amount": amount}
+
 
 @router.get("/pending-withdraws")
 def get_pending_withdraws(admin: str = Depends(get_current_admin)):
     data = db_get("data", {})
-
-    pending_withdraw_requests = data.get("pending_withdraw_requests", {})
-
     result = []
-
-    for user_id, request in pending_withdraw_requests.items():
+    for user_id, request in data.get("pending_withdraw_requests", {}).items():
         result.append({
             "user_id": user_id,
             "username": request.get("username", "غير معروف"),
@@ -290,147 +257,77 @@ def get_pending_withdraws(admin: str = Depends(get_current_admin)):
             "saved_wallet_network": request.get("saved_wallet_network", "غير متوفر"),
             "wallets_match_result": request.get("wallets_match_result", "غير متوفر")
         })
+    return {"count": len(result), "pending_withdraws": result}
 
-    return {
-        "count": len(result),
-        "pending_withdraws": result
-    }
 
 @router.post("/approve-withdraw")
-def approve_withdraw(
-    request: DepositActionRequest,
-    admin: str = Depends(get_current_admin)
-):
+def approve_withdraw(request: UserIdRequest, admin: str = Depends(get_current_admin)):
     data = db_get("data", {})
-    user_id = request.user_id
-
     pending = data.get("pending_withdraw_requests", {})
-    req = pending.get(str(user_id)) or pending.get(user_id)
-
+    req = pending.get(str(request.user_id)) or pending.get(request.user_id)
     if not req:
         raise HTTPException(status_code=404, detail="Withdraw request not found")
 
     username = req["username"]
     amount = round(float(req["amount"]), 2)
-
     user_balance = data.get("user_balance", {})
     user_deposits = data.get("user_deposits", {})
-    user_withdraw_logs = data.get("user_withdraw_logs", {})
-    transactions = data.get("transactions", {})
-    user_last_withdraw_time = data.get("user_last_withdraw_time", {})
-
     current_balance = round(float(user_balance.get(username, 0)), 2)
     capital = round(float(user_deposits.get(username, 0)), 2)
-
-    max_profit_available = round(current_balance - capital, 2)
-
-    if max_profit_available < 0:
-        max_profit_available = 0
-
-    amount = min(amount, max_profit_available)
+    max_profit = max(round(current_balance - capital, 2), 0)
+    amount = min(amount, max_profit)
 
     if amount <= 0:
         raise HTTPException(status_code=400, detail="No available profit to withdraw")
 
     user_balance[username] = round(current_balance - amount, 2)
-    user_last_withdraw_time[username] = time.time()
-
-    manual_withdraw_open = data.get("manual_withdraw_open", {})
-    manual_withdraw_open.pop(username, None)
-
-    user_withdraw_logs.setdefault(username, []).append({
+    data["user_balance"] = user_balance
+    data.setdefault("user_last_withdraw_time", {})[username] = time.time()
+    data.setdefault("manual_withdraw_open", {}).pop(username, None)
+    data.setdefault("user_withdraw_logs", {}).setdefault(username, []).append({
         "amount": amount,
         "time": now_str(),
         "status": "approved",
         "note": "تمت الموافقة على سحب الأرباح من لوحة الويب"
     })
-
-    transactions.setdefault(username, []).append({
-        "type": "withdraw_approved",
-        "amount": amount,
-        "note": "تمت الموافقة على سحب الأرباح من لوحة الويب",
-        "time": now_str()
-    })
-
-    pending.pop(str(user_id), None)
-    pending.pop(user_id, None)
-
+    add_transaction(data, username, "withdraw_approved", amount, "تمت الموافقة على سحب الأرباح من لوحة الويب")
+    pending.pop(str(request.user_id), None)
+    pending.pop(request.user_id, None)
     data["pending_withdraw_requests"] = pending
-    data["user_balance"] = user_balance
-    data["user_last_withdraw_time"] = user_last_withdraw_time
-    data["manual_withdraw_open"] = manual_withdraw_open
-    data["user_withdraw_logs"] = user_withdraw_logs
-    data["transactions"] = transactions
-
-    db_set("data", data)
-
-    return {
-        "success": True,
-        "message": "Withdraw approved successfully",
-        "username": username,
-        "amount": amount
-    }
+    save_data(data)
+    send_telegram(request.user_id, f"✅ تمت الموافقة على طلب السحب بقيمة {amount}$")
+    return {"success": True, "username": username, "amount": amount}
 
 
 @router.post("/reject-withdraw")
-def reject_withdraw(
-    request: DepositActionRequest,
-    admin: str = Depends(get_current_admin)
-):
+def reject_withdraw(request: UserIdRequest, admin: str = Depends(get_current_admin)):
     data = db_get("data", {})
-    user_id = request.user_id
-
     pending = data.get("pending_withdraw_requests", {})
-    req = pending.get(str(user_id)) or pending.get(user_id)
-
+    req = pending.get(str(request.user_id)) or pending.get(request.user_id)
     if not req:
         raise HTTPException(status_code=404, detail="Withdraw request not found")
-
     username = req["username"]
     amount = round(float(req.get("amount", 0)), 2)
-
-    user_withdraw_logs = data.get("user_withdraw_logs", {})
-    transactions = data.get("transactions", {})
-
-    user_withdraw_logs.setdefault(username, []).append({
+    data.setdefault("user_withdraw_logs", {}).setdefault(username, []).append({
         "amount": amount,
         "time": now_str(),
         "status": "rejected",
         "note": "تم رفض طلب سحب الأرباح من لوحة الويب"
     })
-
-    transactions.setdefault(username, []).append({
-        "type": "withdraw_rejected",
-        "amount": amount,
-        "note": "تم رفض طلب سحب الأرباح من لوحة الويب",
-        "time": now_str()
-    })
-
-    pending.pop(str(user_id), None)
-    pending.pop(user_id, None)
-
+    add_transaction(data, username, "withdraw_rejected", amount, "تم رفض طلب سحب الأرباح من لوحة الويب")
+    pending.pop(str(request.user_id), None)
+    pending.pop(request.user_id, None)
     data["pending_withdraw_requests"] = pending
-    data["user_withdraw_logs"] = user_withdraw_logs
-    data["transactions"] = transactions
+    save_data(data)
+    send_telegram(request.user_id, "❌ تم رفض طلب سحب الأرباح")
+    return {"success": True, "username": username, "amount": amount}
 
-    db_set("data", data)
-
-    return {
-        "success": True,
-        "message": "Withdraw rejected successfully",
-        "username": username,
-        "amount": amount
-    }
 
 @router.get("/capital-withdraws")
 def get_capital_withdraws(admin: str = Depends(get_current_admin)):
     data = db_get("data", {})
-
-    capital_withdraw_requests = data.get("capital_withdraw_requests", {})
-
     result = []
-
-    for user_id, request in capital_withdraw_requests.items():
+    for user_id, request in data.get("capital_withdraw_requests", {}).items():
         result.append({
             "user_id": user_id,
             "username": request.get("username", "غير معروف"),
@@ -441,79 +338,39 @@ def get_capital_withdraws(admin: str = Depends(get_current_admin)):
             "network": request.get("network", "غير محفوظة"),
             "admin_notified": request.get("admin_notified", False)
         })
+    return {"count": len(result), "capital_withdraws": result}
 
-    return {
-        "count": len(result),
-        "capital_withdraws": result
-    }
 
 @router.post("/capital-paid")
-def capital_paid(
-    request: DepositActionRequest,
-    admin: str = Depends(get_current_admin)
-):
+def capital_paid(request: UserIdRequest, admin: str = Depends(get_current_admin)):
     data = db_get("data", {})
-    user_id = request.user_id
-
     capital_requests = data.get("capital_withdraw_requests", {})
-    req = capital_requests.get(str(user_id)) or capital_requests.get(user_id)
-
+    req = capital_requests.get(str(request.user_id)) or capital_requests.get(request.user_id)
     if not req:
         raise HTTPException(status_code=404, detail="Capital withdraw request not found")
 
     username = req.get("username")
     amount = round(float(req.get("amount", 0)), 2)
 
-    user_balance = data.get("user_balance", {})
-    user_deposits = data.get("user_deposits", {})
-    user_plans = data.get("user_plans", {})
-    user_last_profit = data.get("user_last_profit", {})
-    transactions = data.get("transactions", {})
-    stopped_profit_users = data.get("stopped_profit_users", {})
-
-    user_balance[username] = 0
-    user_deposits[username] = 0
-    user_plans[username] = "NONE"
-    user_last_profit[username] = time.time()
-
-    stopped_profit_users.pop(username, None)
-
-    capital_requests.pop(str(user_id), None)
-    capital_requests.pop(user_id, None)
-
-    transactions.setdefault(username, []).append({
-        "type": "capital_withdraw_paid",
-        "amount": amount,
-        "note": "تم دفع سحب رأس المال وإغلاق الباقة من لوحة الويب",
-        "time": now_str()
-    })
-
-    data["user_balance"] = user_balance
-    data["user_deposits"] = user_deposits
-    data["user_plans"] = user_plans
-    data["user_last_profit"] = user_last_profit
-    data["transactions"] = transactions
-    data["stopped_profit_users"] = stopped_profit_users
+    data.setdefault("user_balance", {})[username] = 0
+    data.setdefault("user_deposits", {})[username] = 0
+    data.setdefault("user_plans", {})[username] = "NONE"
+    data.setdefault("user_last_profit", {})[username] = time.time()
+    data.setdefault("stopped_profit_users", {}).pop(username, None)
+    capital_requests.pop(str(request.user_id), None)
+    capital_requests.pop(request.user_id, None)
     data["capital_withdraw_requests"] = capital_requests
+    add_transaction(data, username, "capital_withdraw_paid", amount, "تم دفع سحب رأس المال وإغلاق الباقة من لوحة الويب")
+    save_data(data)
+    send_telegram(request.user_id, f"✅ تم دفع سحب رأس المال بقيمة {amount}$ وإغلاق الباقة")
+    return {"success": True, "username": username, "amount": amount}
 
-    db_set("data", data)
-
-    return {
-        "success": True,
-        "message": "Capital withdraw paid successfully",
-        "username": username,
-        "amount": amount
-    }
 
 @router.get("/verification-requests")
 def get_verification_requests(admin: str = Depends(get_current_admin)):
     data = db_get("data", {})
-
-    pending_verification_requests = data.get("pending_verification_requests", {})
-
     result = []
-
-    for user_id, request in pending_verification_requests.items():
+    for user_id, request in data.get("pending_verification_requests", {}).items():
         result.append({
             "user_id": user_id,
             "username": request.get("username", "غير معروف"),
@@ -527,22 +384,201 @@ def get_verification_requests(admin: str = Depends(get_current_admin)):
             "front_id_file_id": request.get("front_id_file_id"),
             "back_id_file_id": request.get("back_id_file_id"),
             "front_id_url": build_telegram_file_url(request.get("front_id_file_id")),
-            "back_id_url": build_telegram_file_url(request.get("back_id_file_id"))
+            "back_id_url": build_telegram_file_url(request.get("back_id_file_id")),
         })
+    return {"count": len(result), "verification_requests": result}
 
-    return {
-        "count": len(result),
-        "verification_requests": result
-    }
+
+@router.post("/approve-verification")
+def approve_verification(request: UserIdRequest, admin: str = Depends(get_current_admin)):
+    data = db_get("data", {})
+    pending = data.get("pending_verification_requests", {})
+    req = pending.get(str(request.user_id)) or pending.get(request.user_id)
+    if not req:
+        raise HTTPException(status_code=404, detail="Verification request not found")
+
+    username = req["username"]
+    data.setdefault("verified_users", {})[username] = True
+    data.setdefault("user_full_name", {})[username] = req.get("full_name", "")
+    data.setdefault("user_residence", {})[username] = req.get("residence", "")
+    if req.get("timezone"):
+        data.setdefault("user_timezone", {})[username] = req.get("timezone")
+    if req.get("front_id_file_id") or req.get("back_id_file_id"):
+        data.setdefault("user_identity_photos", {})[username] = {
+            "front_id_file_id": req.get("front_id_file_id"),
+            "back_id_file_id": req.get("back_id_file_id"),
+            "updated_at": now_str()
+        }
+
+    pending.pop(str(request.user_id), None)
+    pending.pop(request.user_id, None)
+    data["pending_verification_requests"] = pending
+    add_transaction(data, username, "verification_approved", 0, "تمت الموافقة على التوثيق من لوحة الويب")
+    save_data(data)
+    send_telegram(request.user_id, "✅ تمت الموافقة على توثيق حسابك")
+    return {"success": True, "username": username}
+
+
+@router.post("/reject-verification")
+def reject_verification(request: UserIdRequest, admin: str = Depends(get_current_admin)):
+    data = db_get("data", {})
+    pending = data.get("pending_verification_requests", {})
+    req = pending.get(str(request.user_id)) or pending.get(request.user_id)
+    if not req:
+        raise HTTPException(status_code=404, detail="Verification request not found")
+    username = req["username"]
+    pending.pop(str(request.user_id), None)
+    pending.pop(request.user_id, None)
+    data["pending_verification_requests"] = pending
+    add_transaction(data, username, "verification_rejected", 0, "تم رفض التوثيق من لوحة الويب")
+    save_data(data)
+    send_telegram(request.user_id, "❌ تم رفض طلب توثيق الحساب")
+    return {"success": True, "username": username}
+
+
+@router.post("/toggle-subscriptions")
+def toggle_subscriptions(admin: str = Depends(get_current_admin)):
+    data = db_get("data", {})
+    data["subscriptions_open"] = not bool(data.get("subscriptions_open", True))
+    save_data(data)
+    return {"success": True, "subscriptions_open": data["subscriptions_open"]}
+
+
+@router.post("/toggle-maintenance")
+def toggle_maintenance(admin: str = Depends(get_current_admin)):
+    data = db_get("data", {})
+    data["bot_maintenance_mode"] = not bool(data.get("bot_maintenance_mode", False))
+    save_data(data)
+    return {"success": True, "bot_maintenance_mode": data["bot_maintenance_mode"]}
+
+
+@router.post("/toggle-support-employees")
+def toggle_support_employees(admin: str = Depends(get_current_admin)):
+    data = db_get("data", {})
+    data["support_employees_enabled"] = not bool(data.get("support_employees_enabled", False))
+    save_data(data)
+    return {"success": True, "support_employees_enabled": data["support_employees_enabled"]}
+
+
+@router.get("/deleted-accounts")
+def deleted_accounts(admin: str = Depends(get_current_admin)):
+    data = db_get("data", {})
+    items = data.get("deleted_accounts_log", [])
+    return {"count": len(items), "deleted_accounts": list(reversed(items[-200:]))}
+
+
+@router.post("/send-private-message")
+def send_private_message(request: PrivateMessageRequest, admin: str = Depends(get_current_admin)):
+    data = db_get("data", {})
+    users = db_get("users", {})
+    username = request.username.strip()
+    if username not in users:
+        raise HTTPException(status_code=404, detail="User not found")
+    tg_id = get_tg_id(data, username)
+    if not tg_id:
+        raise HTTPException(status_code=400, detail="Telegram ID not found")
+    ok = send_telegram(tg_id, f"📨 رسالة من الإدارة:\\n\\n{request.message}")
+    add_transaction(data, username, "admin_private_message", 0, f"رسالة من لوحة الويب: {request.message[:80]}")
+    save_data(data)
+    return {"success": ok}
+
+
+@router.post("/broadcast")
+def broadcast(request: MessageRequest, admin: str = Depends(get_current_admin)):
+    chat_ids = db_get("chat_ids", [])
+    success = 0
+    failed = 0
+    for uid in chat_ids:
+        if send_telegram(uid, request.message):
+            success += 1
+        else:
+            failed += 1
+    return {"success": True, "sent": success, "failed": failed}
+
+
+@router.post("/plan-message")
+def plan_message(request: PlanMessageRequest, admin: str = Depends(get_current_admin)):
+    data = db_get("data", {})
+    target_users = [
+        username for username, plan in data.get("user_plans", {}).items()
+        if plan == request.plan
+    ]
+    success = 0
+    failed = 0
+    for username in target_users:
+        tg_id = get_tg_id(data, username)
+        if send_telegram(tg_id, f"📨 رسالة من الإدارة لمشتركي {request.plan}:\\n\\n{request.message}"):
+            success += 1
+        else:
+            failed += 1
+    return {"success": True, "sent": success, "failed": failed}
+
+
+@router.post("/delete-user")
+def delete_user(request: UsernameRequest, admin: str = Depends(get_current_admin)):
+    username = request.username.strip()
+    users = db_get("users", {})
+    data = db_get("data", {})
+    if username not in users:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user_id = get_tg_id(data, username)
+    balance = round(float(data.get("user_balance", {}).get(username, 0)), 2)
+    capital = round(float(data.get("user_deposits", {}).get(username, 0)), 2)
+
+    deleted_accounts_log = data.get("deleted_accounts_log", [])
+    deleted_accounts_log.append({
+        "username": username,
+        "telegram_id": user_id,
+        "full_name": data.get("user_full_name", {}).get(username, "غير متوفر"),
+        "residence": data.get("user_residence", {}).get(username, "غير متوفر"),
+        "status_before_delete": data.get("user_statuses", {}).get(username, "active"),
+        "plan_before_delete": data.get("user_plans", {}).get(username, "NONE"),
+        "capital_before_delete": capital,
+        "balance_before_delete": balance,
+        "profit_only_before_delete": max(round(balance - capital, 2), 0),
+        "deleted_at": now_str(),
+        "source": "web_admin_dashboard"
+    })
+    data["deleted_accounts_log"] = deleted_accounts_log[-1000:]
+
+    keys_by_username = [
+        "user_plans", "user_balance", "transactions", "user_deposits", "user_last_profit",
+        "user_withdraw_logs", "user_deposit_logs", "user_statuses", "support_blocked_users",
+        "user_first_deposit_time", "user_last_withdraw_time", "user_telegram_ids",
+        "user_residence", "user_full_name", "verified_users", "user_referrer",
+        "referral_bonus_paid", "stopped_profit_users", "support_waiting_reply",
+        "manual_withdraw_open", "user_created_time", "user_wallet_address",
+        "user_wallet_network", "user_identity_photos", "user_timezone",
+        "pending_profit_capital_activation", "web_identity_images"
+    ]
+    for key in keys_by_username:
+        item = data.get(key, {})
+        if isinstance(item, dict):
+            item.pop(username, None)
+            data[key] = item
+
+    if user_id:
+        for key in ["pending_deposit_requests", "pending_withdraw_requests", "capital_withdraw_requests", "pending_verification_requests", "logged_in_users"]:
+            item = data.get(key, {})
+            if isinstance(item, dict):
+                item.pop(str(user_id), None)
+                item.pop(user_id, None)
+                data[key] = item
+
+    for child, parent in list(data.get("user_referrer", {}).items()):
+        if parent == username:
+            data["user_referrer"].pop(child, None)
+
+    users.pop(username, None)
+    save_users(users)
+    save_data(data)
+    return {"success": True, "username": username}
+
 
 @router.get("/telegram-file/{file_id}")
-def get_telegram_file(
-    file_id: str,
-    admin: str = Depends(get_current_admin)
-):
+def get_telegram_file(file_id: str, admin: str = Depends(get_current_admin)):
     file_url = build_telegram_file_url(file_id)
-
     if not file_url:
         raise HTTPException(status_code=404, detail="File not found")
-
     return RedirectResponse(file_url)
