@@ -753,37 +753,69 @@
           roots.map((u) => row(u, 0)).join("") ||
           '<tr><td colspan="13">لا توجد بيانات</td></tr>';
       }
-      function row(u, l, p = "") {
-        let ind = "&nbsp;".repeat(l * 6);
-        return `<tr data-parent="${safe(p)}" class="${l ? "child" : ""}"><td>${ind}${l ? "↳ " : ""}<button class="blue" onclick="details('${safe(u.username)}')">${safe(u.username)}</button></td><td>${safe(u.password)}</td><td>${safe(u.telegram_id)}</td><td>${safe(u.full_name)}</td><td>${safe(u.residence)}</td><td>${safe(u.plan)}</td><td>${badge(u.status)}</td><td>${u.verified ? "✅" : "❌"}</td><td>${money(u.capital)}</td><td>${money(u.balance)}</td><td>${money(u.profit_only)}</td><td>${u.children_count || 0} <button class="dark" onclick="children('${safe(u.username)}',${l + 1},this.closest('tr'))">View</button></td><td><button class="purple" onclick="details('${safe(u.username)}')">Control</button></td></tr>`;
-      }
+      function row(u, level, parent = "") {
+       const indent = "&nbsp;".repeat(level * 6);
+
+       return `
+        <tr data-parent="${parent}" class="${level ? "child" : ""}">
+            <td>
+                ${indent}${level ? "↳ " : ""}
+                <button class="blue" onclick="details('${u.username}')">
+                    ${safe(u.username)}
+                </button>
+            </td>
+
+            <td>${safe(u.password)}</td>
+            <td>${safe(u.telegram_id)}</td>
+            <td>${safe(u.full_name)}</td>
+            <td>${safe(u.residence)}</td>
+            <td>${safe(u.plan)}</td>
+            <td>${badge(u.status)}</td>
+            <td>${u.verified ? "✅" : "❌"}</td>
+            <td>${money(u.capital)}</td>
+            <td>${money(u.balance)}</td>
+            <td>${money(u.profit_only)}</td>
+
+            <td>
+                ${u.children_count || 0}
+                <button class="dark" onclick="children('${u.username}', ${level + 1}, this.closest('tr'))">
+                    View
+                </button>
+            </td>
+
+            <td>
+                <button class="purple" onclick="details('${u.username}')">
+                    Control
+                </button>
+            </td>
+        </tr>
+       `;
+       }
 
 
       function children(name, level, parentRow) {
-        const existingRows = document.querySelectorAll(
-                 `tr[data-parent="${CSS.escape(name)}"]`
-            );
+       const existingRows = document.querySelectorAll(
+        `tr[data-parent="${name}"]`
+       );
 
-        // إذا الأبناء ظاهرين → أخفِهم
-        if (existingRows.length > 0) {
-                existingRows.forEach(row => row.remove());
-                return;
-        }
+       if (existingRows.length > 0) {
+        existingRows.forEach(row => row.remove());
+        return;
+       }
 
-        // إذا غير ظاهرين → أظهرهم
-        const childrenList = U.filter(user => user.referrer === name);
+       const childrenList = U.filter(user => user.referrer === name);
 
-        if (childrenList.length === 0) {
-            alert("لا يوجد أبناء لهذا المستخدم");
-            return;
-        }
+       if (childrenList.length === 0) {
+        alert("لا يوجد أبناء لهذا المستخدم");
+        return;
+       }
 
-        const rowsHtml = childrenList
-            .map(child => row(child, level, name))
-            .join("");
+       const rowsHtml = childrenList
+        .map(child => row(child, level, name))
+        .join("");
 
-        parentRow.insertAdjacentHTML("afterend", rowsHtml);
-        }
+       parentRow.insertAdjacentHTML("afterend", rowsHtml);
+     }
       async function details(name) {
         show("details");
         let u = await api("/users/details/" + encodeURIComponent(name));
