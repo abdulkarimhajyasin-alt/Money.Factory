@@ -736,86 +736,95 @@
         });
       }
       async function loadUsers() {
-        let r = await api(
-          "/users/?search=" + encodeURIComponent($("search")?.value || ""),
-        );
-        U = r.users || [];
-        let sf = $("sf").value,
-          pf = $("pf").value,
-          roots = U.filter(
-            (u) =>
-              (!u.referrer ||
-                ["بدون دعوة", "غير محدد", ""].includes(u.referrer)) &&
-              (!sf || u.status === sf) &&
-              (!pf || u.plan === pf),
-          );
-        $("usersBody").innerHTML =
-          roots.map((u) => row(u, 0)).join("") ||
-          '<tr><td colspan="13">لا توجد بيانات</td></tr>';
-      }
-      function row(u, level, parent = "") {
-       const indent = "&nbsp;".repeat(level * 6);
+  let r = await api(
+    "/users/?search=" + encodeURIComponent($("search")?.value || ""),
+  );
 
-       return `
-        <tr data-parent="${parent}" class="${level ? "child" : ""}">
-            <td>
-                ${indent}${level ? "↳ " : ""}
-                <button class="blue" onclick="details('${u.username}')">
-                    ${safe(u.username)}
-                </button>
-            </td>
+  U = r.users || [];
 
-            <td>${safe(u.password)}</td>
-            <td>${safe(u.telegram_id)}</td>
-            <td>${safe(u.full_name)}</td>
-            <td>${safe(u.residence)}</td>
-            <td>${safe(u.plan)}</td>
-            <td>${badge(u.status)}</td>
-            <td>${u.verified ? "✅" : "❌"}</td>
-            <td>${money(u.capital)}</td>
-            <td>${money(u.balance)}</td>
-            <td>${money(u.profit_only)}</td>
+  let sf = $("sf").value;
+  let pf = $("pf").value;
 
-            <td>
-                ${u.children_count || 0}
-                <button class="dark" onclick="children('${u.username}', ${level + 1}, this.closest('tr'))">
-                    View
-                </button>
-            </td>
+  let roots = U.filter(
+    (u) =>
+      (!u.referrer ||
+        ["بدون دعوة", "غير محدد", ""].includes(String(u.referrer).trim())) &&
+      (!sf || u.status === sf) &&
+      (!pf || u.plan === pf),
+  );
 
-            <td>
-                <button class="purple" onclick="details('${u.username}')">
-                    Control
-                </button>
-            </td>
-        </tr>
-       `;
-       }
+  $("usersBody").innerHTML =
+    roots.map((u) => row(u, 0, "")).join("") ||
+    '<tr><td colspan="13">لا توجد بيانات</td></tr>';
+}
 
+   function row(u, level, parent = "") {
+  const indent = "&nbsp;".repeat(level * 6);
+  const rowId = `children-of-${String(u.username).replaceAll(" ", "_")}`;
 
-      function children(name, level, parentRow) {
-       const existingRows = document.querySelectorAll(
-        `tr[data-parent="${name}"]`
-       );
+  return `
+    <tr data-parent="${safe(parent)}" data-username="${safe(u.username)}" class="${level ? "child" : ""}">
+      <td>
+        ${indent}${level ? "↳ " : ""}
+        <button class="blue" onclick="details('${safe(u.username)}')">
+          ${safe(u.username)}
+        </button>
+      </td>
 
-       if (existingRows.length > 0) {
-        existingRows.forEach(row => row.remove());
-        return;
-       }
+      <td>${safe(u.password)}</td>
+      <td>${safe(u.telegram_id)}</td>
+      <td>${safe(u.full_name)}</td>
+      <td>${safe(u.residence)}</td>
+      <td>${safe(u.plan)}</td>
+      <td>${badge(u.status)}</td>
+      <td>${u.verified ? "✅" : "❌"}</td>
+      <td>${money(u.capital)}</td>
+      <td>${money(u.balance)}</td>
+      <td>${money(u.profit_only)}</td>
 
-       const childrenList = U.filter(user => user.referrer === name);
+      <td>
+        ${u.children_count || 0}
+        <button class="dark" onclick="children('${safe(u.username)}', ${level + 1}, this.closest('tr'), this)">
+          View
+        </button>
+      </td>
 
-       if (childrenList.length === 0) {
-        alert("لا يوجد أبناء لهذا المستخدم");
-        return;
-       }
+      <td>
+        <button class="purple" onclick="details('${safe(u.username)}')">
+          Control
+        </button>
+      </td>
+    </tr>
+  `;
+}
 
-       const rowsHtml = childrenList
-        .map(child => row(child, level, name))
-        .join("");
+async function children(username, level, parentRow, btn) {
+  const existingRows = document.querySelectorAll(
+    `tr[data-parent="${CSS.escape(username)}"]`
+  );
 
-       parentRow.insertAdjacentHTML("afterend", rowsHtml);
-     }
+  if (existingRows.length > 0) {
+    existingRows.forEach((row) => row.remove());
+    if (btn) btn.innerText = "View";
+    return;
+  }
+
+  const result = await api("/users/children/" + encodeURIComponent(username));
+  const childrenList = result.children || [];
+
+  if (childrenList.length === 0) {
+    alert("لا يوجد أبناء لهذا المستخدم");
+    return;
+  }
+
+  const rowsHtml = childrenList
+    .map((child) => row(child, level, username))
+    .join("");
+
+  parentRow.insertAdjacentHTML("afterend", rowsHtml);
+
+  if (btn) btn.innerText = "Hide";
+}
       async function details(name) {
         show("details");
         let u = await api("/users/details/" + encodeURIComponent(name));
