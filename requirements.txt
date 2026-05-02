@@ -4,3 +4,5 @@ psycopg2-binary
 fastapi
 uvicorn
 python-jose[cryptography]
+requests
+jinja2
