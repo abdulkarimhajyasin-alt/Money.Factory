@@ -1,585 +1,1418 @@
-from pathlib import Path
-
-html = r'''<!doctype html>
+<!DOCTYPE html>
 <html lang="ar" dir="rtl">
-  <head>
-    <meta charset="UTF-8" />
-    <title>Money Factory Admin</title>
+<head>
+    <meta charset="UTF-8">
+    <title>Money Factory Admin Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-      * { box-sizing: border-box; }
-      body {
-        margin: 0;
-        font-family: Tahoma, Arial;
-        background:
-          radial-gradient(circle at top right, rgba(37, 99, 235, 0.2), transparent 30%),
-          linear-gradient(135deg, #020617, #0f172a);
-        color: #fff;
-        min-height: 100vh;
-      }
-      .hidden { display: none !important; }
-      .container { width: min(1450px, 94%); margin: auto; padding: 24px 0 45px; }
-      .login {
-        width: min(430px, 94%);
-        margin: 80px auto;
-        background: rgba(255, 255, 255, 0.08);
-        border: 1px solid rgba(255, 255, 255, 0.14);
-        border-radius: 28px;
-        padding: 28px;
-        box-shadow: 0 22px 70px #0008;
-      }
-      .login h1 { text-align: center; }
-      input, textarea, select {
-        width: 100%;
-        border: 1px solid rgba(255, 255, 255, 0.16);
-        background: #0f172add;
-        color: #fff;
-        border-radius: 16px;
-        padding: 13px;
-        margin: 7px 0;
-      }
-      button {
-        border: 0;
-        border-radius: 16px;
-        padding: 11px 15px;
-        font-weight: 900;
-        cursor: pointer;
-      }
-      .blue { background: #2563eb; color: #fff; }
-      .red { background: #dc2626; color: #fff; }
-      .green { background: #16a34a; color: #fff; }
-      .orange { background: #f59e0b; color: #111827; }
-      .dark { background: #334155; color: #fff; }
-      .purple { background: #7c3aed; color: #fff; }
-      .top {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 14px;
-        flex-wrap: wrap;
-        background: rgba(255, 255, 255, 0.08);
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        border-radius: 26px;
-        padding: 18px;
-        margin-bottom: 18px;
-      }
-      .nav { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
-      .nav button {
-        background: rgba(255, 255, 255, 0.1);
-        color: #fff;
-        border: 1px solid rgba(255, 255, 255, 0.12);
-      }
-      .nav button.active { background: #2563eb; }
-      .hero {
-        background: linear-gradient(135deg, #2563eb, #0f172a);
-        border-radius: 32px;
-        padding: 24px;
-        margin-bottom: 18px;
-        box-shadow: 0 24px 80px #0007;
-      }
-      .hero h2 { margin: 0; font-size: 34px; }
-      .badges { display: flex; gap: 8px; flex-wrap: wrap; }
-      .badge {
-        display: inline-flex;
-        padding: 8px 12px;
-        border-radius: 999px;
-        font-size: 12px;
-        font-weight: 900;
-        background: #475569;
-      }
-      .metrics, .cards, .actions {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-        gap: 14px;
-        margin-top: 18px;
-      }
-      .metric, .card, .panel {
-        background: rgba(255, 255, 255, 0.08);
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        border-radius: 24px;
-        padding: 18px;
-      }
-      .metric label, .card small { display: block; color: #bae6fd; margin-bottom: 8px; }
-      .metric strong, .card b { font-size: 26px; }
-      .layout { display: grid; grid-template-columns: 1fr 0.85fr; gap: 18px; }
-      .action {
-        min-height: 95px;
-        background: rgba(255, 255, 255, 0.1);
-        color: #fff;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        flex-direction: column;
-        gap: 8px;
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        font-size: 17px;
-      }
-      .action span { font-size: 30px; }
-      .action:hover { background: #2563eb88; transform: translateY(-2px); }
-      .table-wrap { overflow: auto; border-radius: 18px; }
-      table { width: 100%; border-collapse: collapse; min-width: 1050px; background: #0f172add; }
-      th, td {
-        padding: 11px;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-        text-align: center;
-        font-size: 13px;
-      }
-      th { color: #bae6fd; }
-      .child { background: rgba(255, 255, 255, 0.05); }
-      .tools { display: flex; gap: 10px; flex-wrap: wrap; }
-      .tools input, .tools select { max-width: 320px; }
-      .modal {
-        position: fixed;
-        inset: 0;
-        background: #000c;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 9999;
-        padding: 20px;
-      }
-      .box {
-        width: min(760px, 96%);
-        max-height: 90vh;
-        overflow: auto;
-        background: #0f172a;
-        border: 1px solid rgba(255, 255, 255, 0.14);
-        border-radius: 28px;
-        padding: 22px;
-      }
-      .box-head { display: flex; justify-content: space-between; align-items: center; }
-      .msg { color: #facc15; font-weight: 900; margin-top: 10px; }
-      .ok { color: #22c55e; }
-      .err { color: #ef4444; }
-      .img { width: 80px; border-radius: 10px; cursor: pointer; }
-      .tabs { display: flex; gap: 10px; flex-wrap: wrap; margin: 12px 0; }
-      .tabs button { background: #334155; color: #fff; }
-      .tabs .active { background: #2563eb; }
-      .info {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-        gap: 12px;
-      }
-      .info div {
-        background: #0f172add;
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        border-radius: 16px;
-        padding: 14px;
-      }
-      @media (max-width: 900px) {
-        .layout { grid-template-columns: 1fr; }
-        .hero h2 { font-size: 26px; }
-      }
-    </style>
-  </head>
 
-  <body>
-    <div id="login" class="login">
-      <h1>Money Factory Admin</h1>
-      <p style="text-align: center; color: #cbd5e1">لوحة تحكم ويب مطابقة لأدمن تيليغرام</p>
-      <input id="u" placeholder="اسم المستخدم" />
-      <input id="p" type="password" placeholder="كلمة المرور" />
-      <button class="blue" style="width: 100%" onclick="login()">دخول</button>
-      <div id="loginMsg" class="msg err"></div>
+    <style>
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            font-family: Tahoma, Arial, sans-serif;
+            background:
+                radial-gradient(circle at top right, rgba(37,99,235,0.25), transparent 32%),
+                linear-gradient(135deg, #020617, #0f172a);
+            color: #f8fafc;
+            min-height: 100vh;
+        }
+
+        .hidden { display: none !important; }
+
+        .container {
+            width: min(1450px, 94%);
+            margin: auto;
+            padding: 24px 0 45px;
+        }
+
+        .login-box {
+            width: min(430px, 94%);
+            margin: 85px auto;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.14);
+            border-radius: 28px;
+            padding: 30px;
+            box-shadow: 0 22px 70px rgba(0,0,0,0.35);
+            backdrop-filter: blur(16px);
+        }
+
+        .login-box h1 {
+            margin: 0 0 8px;
+            text-align: center;
+            font-size: 28px;
+        }
+
+        .login-box p {
+            text-align: center;
+            color: #cbd5e1;
+            margin-bottom: 22px;
+        }
+
+        input, select, textarea {
+            width: 100%;
+            border: 1px solid rgba(255,255,255,0.16);
+            background: rgba(15,23,42,0.88);
+            color: white;
+            border-radius: 16px;
+            padding: 13px 14px;
+            margin: 7px 0;
+            outline: none;
+        }
+
+        input:focus, select:focus, textarea:focus {
+            border-color: #38bdf8;
+        }
+
+        button {
+            border: none;
+            cursor: pointer;
+            border-radius: 16px;
+            padding: 11px 15px;
+            font-weight: 900;
+        }
+
+        .btn-blue { background: #2563eb; color: white; }
+        .btn-red { background: #dc2626; color: white; }
+        .btn-green { background: #16a34a; color: white; }
+        .btn-orange { background: #f59e0b; color: #111827; }
+        .btn-dark { background: #334155; color: white; }
+        .btn-purple { background: #7c3aed; color: white; }
+        .btn-black { background: #020617; color: white; }
+
+        .topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 14px;
+            flex-wrap: wrap;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 26px;
+            padding: 18px;
+            margin-bottom: 18px;
+            backdrop-filter: blur(16px);
+        }
+
+        .topbar h1 {
+            margin: 0;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            color: #cbd5e1;
+            font-size: 14px;
+            margin-top: 6px;
+        }
+
+        .nav {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 18px;
+        }
+
+        .nav button {
+            background: rgba(255,255,255,0.10);
+            color: white;
+            border: 1px solid rgba(255,255,255,0.12);
+        }
+
+        .nav button.active {
+            background: #2563eb;
+        }
+
+        .hero {
+            background: linear-gradient(135deg, #2563eb, #0f172a);
+            border: 1px solid rgba(255,255,255,0.14);
+            border-radius: 32px;
+            padding: 24px;
+            margin-bottom: 18px;
+            box-shadow: 0 24px 80px rgba(0,0,0,0.35);
+        }
+
+        .hero h2 {
+            margin: 0;
+            font-size: 34px;
+        }
+
+        .metrics, .cards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+            gap: 14px;
+            margin-top: 18px;
+        }
+
+        .metric, .card, .panel {
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 24px;
+            padding: 18px;
+            box-shadow: 0 18px 55px rgba(0,0,0,0.22);
+        }
+
+        .metric label, .card-title {
+            display: block;
+            color: #bae6fd;
+            font-size: 13px;
+            margin-bottom: 8px;
+        }
+
+        .metric strong, .card-value {
+            font-size: 28px;
+            font-weight: 900;
+        }
+
+        .card-note {
+            color: #cbd5e1;
+            font-size: 12px;
+            margin-top: 8px;
+        }
+
+        .layout {
+            display: grid;
+            grid-template-columns: 1fr 0.85fr;
+            gap: 18px;
+        }
+
+        .section-title {
+            margin: 24px 0 14px;
+            font-size: 22px;
+        }
+
+        .actions-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(185px, 1fr));
+            gap: 12px;
+        }
+
+        .action-card {
+            min-height: 95px;
+            background: rgba(255,255,255,0.10);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 8px;
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 24px;
+            font-size: 16px;
+            transition: 0.2s;
+        }
+
+        .action-card:hover {
+            background: rgba(37,99,235,0.55);
+            transform: translateY(-2px);
+        }
+
+        .action-card span {
+            font-size: 30px;
+        }
+
+        .table-wrap {
+            overflow-x: auto;
+            border-radius: 18px;
+            background: rgba(15,23,42,0.72);
+        }
+
+        table {
+            width: 100%;
+            min-width: 1120px;
+            border-collapse: collapse;
+            background: rgba(15,23,42,0.88);
+        }
+
+        th, td {
+            padding: 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            text-align: center;
+            font-size: 13px;
+            white-space: nowrap;
+        }
+
+        th {
+            color: #bae6fd;
+            background: rgba(255,255,255,0.04);
+        }
+
+        tr:hover {
+            background: rgba(255,255,255,0.05);
+        }
+
+        .child-row {
+            background: rgba(255,255,255,0.04);
+        }
+
+        .tools {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 14px;
+        }
+
+        .tools input, .tools select {
+            max-width: 320px;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 7px 11px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 900;
+            background: #475569;
+            color: white;
+        }
+
+        .badge.green { background: #16a34a; }
+        .badge.red { background: #dc2626; }
+        .badge.orange { background: #f59e0b; color: #111827; }
+        .badge.blue { background: #2563eb; }
+        .badge.purple { background: #7c3aed; }
+
+        .chart-box {
+            height: 280px;
+            margin-bottom: 16px;
+        }
+
+        .modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.78);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            padding: 20px;
+        }
+
+        .modal-box {
+            width: min(760px, 96%);
+            max-height: 90vh;
+            overflow: auto;
+            background: #0f172a;
+            border: 1px solid rgba(255,255,255,0.14);
+            border-radius: 28px;
+            padding: 22px;
+        }
+
+        .modal-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 14px;
+        }
+
+        .modal-head h3 {
+            margin: 0;
+        }
+
+        .msg {
+            margin-top: 10px;
+            color: #facc15;
+            font-weight: 900;
+        }
+
+        .error { color: #ef4444; }
+        .success { color: #22c55e; }
+
+        .img-thumb {
+            width: 85px;
+            max-height: 85px;
+            border-radius: 10px;
+            cursor: pointer;
+            border: 1px solid rgba(255,255,255,0.18);
+            object-fit: cover;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin: 14px 0;
+        }
+
+        .tabs button {
+            background: #334155;
+            color: white;
+        }
+
+        .tabs button.active {
+            background: #2563eb;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 12px;
+        }
+
+        .info-item {
+            background: rgba(15,23,42,0.82);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 16px;
+            padding: 14px;
+        }
+
+        .info-label {
+            color: #bae6fd;
+            font-size: 12px;
+            margin-bottom: 7px;
+        }
+
+        .info-value {
+            font-weight: 900;
+            word-break: break-word;
+        }
+
+        .action-row {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 12px;
+        }
+
+        .danger-zone {
+            margin-top: 16px;
+            border: 1px solid rgba(239,68,68,0.45);
+            background: rgba(127,29,29,0.25);
+        }
+
+        @media (max-width: 900px) {
+            .layout { grid-template-columns: 1fr; }
+            .hero h2 { font-size: 26px; }
+            .metric strong, .card-value { font-size: 22px; }
+        }
+    </style>
+</head>
+
+<body>
+
+<div id="loginBox" class="login-box">
+    <h1>Money Factory Admin</h1>
+    <p>لوحة تحكم الإدارة</p>
+
+    <input id="adminUsername" placeholder="اسم المستخدم">
+    <input id="adminPassword" type="password" placeholder="كلمة المرور">
+
+    <button class="btn-blue" style="width:100%;margin-top:10px;" onclick="login()">دخول</button>
+    <div id="loginMsg" class="msg error"></div>
+</div>
+
+<div id="app" class="container hidden">
+
+    <div class="topbar">
+        <div>
+            <h1>Money Factory | Admin Control Center</h1>
+            <div class="subtitle">إدارة الحسابات، الشجرة، الطلبات، التوثيق، الماليات، وتفاصيل المستخدمين</div>
+        </div>
+
+        <button class="btn-red" onclick="logout()">خروج</button>
     </div>
 
-    <div id="app" class="container hidden">
-      <div class="top">
-        <div>
-          <h1>Money Factory | Admin Control Center</h1>
-          <div style="color: #cbd5e1">
-            تحكم ومراقبة كاملة: الحسابات، الشجرة، الطلبات، الاشتراك، البوت، الدعم، الرسائل، الماليات
-          </div>
-        </div>
-        <button class="red" onclick="logout()">خروج</button>
-      </div>
+    <div class="nav">
+        <button id="navDashboard" class="active" onclick="showSection('dashboard')">Dashboard</button>
+        <button id="navUsers" onclick="showSection('users')">Users Tree</button>
+        <button id="navFinancial" onclick="showSection('financial')">Financial</button>
+        <button id="navDetails" class="hidden" onclick="showSection('details')">Details</button>
+        <button onclick="refreshAll()">Refresh</button>
+    </div>
 
-      <div class="nav">
-        <button id="nHome" class="active" onclick="show('home')">Dashboard</button>
-        <button id="nUsers" onclick="show('users')">Users Tree</button>
-        <button id="nFinancial" onclick="show('financial')">Financial</button>
-        <button id="nDeleted" onclick="show('deleted')">Deleted</button>
-        <button onclick="refresh()">Refresh</button>
-      </div>
-
-      <section id="home">
+    <section id="dashboardSection">
         <div class="hero">
-          <div style="display: flex; justify-content: space-between; gap: 14px; flex-wrap: wrap">
-            <div>
-              <h2>🛠 لوحة تحكم الأدمن</h2>
-              <div style="color: #dbeafe">كل وظائف لوحة تيليغرام في صفحة ويب احترافية</div>
+            <div style="display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;">
+                <div>
+                    <h2>🛠 لوحة تحكم الأدمن</h2>
+                    <div style="color:#dbeafe;margin-top:8px;">إحصائيات مباشرة من PostgreSQL / bot_storage</div>
+                </div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <span class="badge blue">Admin</span>
+                    <span class="badge green">Live</span>
+                </div>
             </div>
-            <div class="badges">
-              <span id="subB" class="badge">---</span>
-              <span id="botB" class="badge">---</span>
-              <span id="supB" class="badge">---</span>
-            </div>
-          </div>
 
-          <div class="metrics">
-            <div class="metric"><label>المستخدمون</label><strong id="total">0</strong></div>
-            <div class="metric"><label>الموثقون</label><strong id="verified">0</strong></div>
-            <div class="metric"><label>النشطون</label><strong id="active">0</strong></div>
-            <div class="metric"><label>المجمدون</label><strong id="frozen">0</strong></div>
-            <div class="metric"><label>المحظورون</label><strong id="banned">0</strong></div>
-            <div class="metric"><label>رأس المال</label><strong id="capital">0$</strong></div>
-            <div class="metric"><label>الأرصدة</label><strong id="balances">0$</strong></div>
-            <div class="metric"><label>الأرباح</label><strong id="profit">0$</strong></div>
-          </div>
+            <div class="metrics">
+                <div class="metric"><label>إجمالي المستخدمين</label><strong id="total_users">0</strong></div>
+                <div class="metric"><label>الموثقون</label><strong id="verified_users">0</strong></div>
+                <div class="metric"><label>غير الموثقين</label><strong id="unverified_users">0</strong></div>
+                <div class="metric"><label>النشطون</label><strong id="active_users">0</strong></div>
+                <div class="metric"><label>المجمدون</label><strong id="frozen_users">0</strong></div>
+                <div class="metric"><label>المحظورون</label><strong id="banned_users">0</strong></div>
+                <div class="metric"><label>رأس المال</label><strong id="total_capital">0$</strong></div>
+                <div class="metric"><label>الأرصدة</label><strong id="total_balances">0$</strong></div>
+                <div class="metric"><label>الأرباح</label><strong id="total_profit_only">0$</strong></div>
+            </div>
         </div>
 
         <div class="layout">
-          <div class="panel">
-            <h3>⚡ أوامر الأدمن</h3>
-            <div class="actions">
-              <button class="action" onclick="show('financial')"><span>📥</span>طلبات الإيداع</button>
-              <button class="action" onclick="show('financial')"><span>💸</span>طلبات السحب</button>
-              <button class="action" onclick="show('financial')"><span>🏦</span>طلبات رأس المال</button>
-              <button class="action" onclick="show('deleted')"><span>🗑️</span>سجل المحذوفين</button>
-              <button class="action" onclick="show('users')"><span>👥</span>عدد المستخدمين</button>
-              <button class="action" onclick="summaryModal()"><span>📊</span>ملخص مالي</button>
-              <button class="action" onclick="post('/financial/toggle-subscriptions').then(refresh)"><span>📌</span>إيقاف/تشغيل الاشتراك</button>
-              <button class="action" onclick="post('/financial/toggle-maintenance').then(refresh)"><span>🛠️</span>إيقاف/تشغيل البوت</button>
-              <button class="action" onclick="broadcastModal()"><span>📢</span>رسالة للجميع</button>
-              <button class="action" onclick="planMessageModal()"><span>📨</span>رسالة حسب الباقة</button>
-              <button class="action" onclick="statsModal()"><span>📈</span>إحصائيات متقدمة</button>
-              <button class="action" onclick="searchModal()"><span>🔍</span>بحث عن مستخدم</button>
-              <button class="action" onclick="deleteUserModal()"><span>🗑️</span>حذف مستخدم</button>
-              <button class="action" onclick="post('/financial/toggle-support-employees').then(refresh)"><span>👨‍💼</span>موظفو الدعم</button>
+            <div class="panel">
+                <h3>⚡ أوامر سريعة</h3>
+                <div class="actions-grid">
+                    <button class="action-card" onclick="showSection('users')"><span>👥</span>المستخدمون</button>
+                    <button class="action-card" onclick="showSection('financial')"><span>📥</span>طلبات الإيداع</button>
+                    <button class="action-card" onclick="showSection('financial')"><span>💸</span>طلبات السحب</button>
+                    <button class="action-card" onclick="showSection('financial')"><span>🏦</span>سحب رأس المال</button>
+                    <button class="action-card" onclick="showSection('financial')"><span>🪪</span>التوثيق</button>
+                    <button class="action-card" onclick="summaryModal()"><span>📊</span>ملخص مالي</button>
+                </div>
+
+                <h3 class="section-title">📦 الباقات</h3>
+                <div class="cards-grid">
+                    <div class="card"><div class="card-title">فضية</div><div class="card-value" id="silver_users">0</div></div>
+                    <div class="card"><div class="card-title">ذهبية</div><div class="card-value" id="gold_users">0</div></div>
+                    <div class="card"><div class="card-title">VIP</div><div class="card-value" id="vip_users">0</div></div>
+                    <div class="card"><div class="card-title">بدون باقة</div><div class="card-value" id="no_plan_users">0</div></div>
+                </div>
+
+                <h3 class="section-title">⏳ الطلبات المعلقة</h3>
+                <div class="cards-grid">
+                    <div class="card"><div class="card-title">إيداعات</div><div class="card-value" id="pending_deposits">0</div></div>
+                    <div class="card"><div class="card-title">سحوبات أرباح</div><div class="card-value" id="pending_withdraws">0</div></div>
+                    <div class="card"><div class="card-title">سحب رأس المال</div><div class="card-value" id="pending_capital_withdraws">0</div></div>
+                </div>
             </div>
-          </div>
 
-          <div class="panel">
-            <h3>📊 الرسوم</h3>
-            <div style="height: 280px"><canvas id="usersChart"></canvas></div>
-            <div style="height: 280px"><canvas id="plansChart"></canvas></div>
-          </div>
+            <div class="panel">
+                <h3>📊 حالات المستخدمين</h3>
+                <div class="chart-box"><canvas id="usersChart"></canvas></div>
+
+                <h3>📦 توزيع الباقات</h3>
+                <div class="chart-box"><canvas id="plansChart"></canvas></div>
+            </div>
         </div>
-      </section>
+    </section>
 
-      <section id="users" class="hidden">
+    <section id="usersSection" class="hidden">
         <div class="panel">
-          <h3>👥 المستخدمون والشجرة</h3>
-          <div class="tools">
-            <input id="search" placeholder="بحث..." onkeyup="loadUsers()" />
-            <select id="sf" onchange="loadUsers()">
-              <option value="">كل الحالات</option>
-              <option value="active">نشط</option>
-              <option value="frozen">مجمد</option>
-              <option value="banned">محظور</option>
-            </select>
-            <select id="pf" onchange="loadUsers()">
-              <option value="">كل الباقات</option>
-              <option value="NONE">بدون باقة</option>
-              <option value="الباقة الفضية">فضية</option>
-              <option value="الباقة الذهبية">ذهبية</option>
-              <option value="باقة VIP">VIP</option>
-            </select>
-          </div>
+            <h3>👥 المستخدمون بنظام الشجرة</h3>
 
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Username</th>
-                  <th>Password</th>
-                  <th>TG</th>
-                  <th>Name</th>
-                  <th>Country</th>
-                  <th>Plan</th>
-                  <th>Status</th>
-                  <th>Verified</th>
-                  <th>Capital</th>
-                  <th>Balance</th>
-                  <th>Profit</th>
-                  <th>Children</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="usersBody"></tbody>
-            </table>
-          </div>
+            <div class="tools">
+                <input id="searchInput" placeholder="بحث باسم المستخدم / الدولة / الباقة..." onkeyup="loadUsers()">
+                <select id="statusFilter" onchange="loadUsers()">
+                    <option value="">كل الحالات</option>
+                    <option value="active">نشط</option>
+                    <option value="frozen">مجمد</option>
+                    <option value="banned">محظور</option>
+                </select>
+                <select id="planFilter" onchange="loadUsers()">
+                    <option value="">كل الباقات</option>
+                    <option value="NONE">بدون باقة</option>
+                    <option value="الباقة الفضية">فضية</option>
+                    <option value="الباقة الذهبية">ذهبية</option>
+                    <option value="باقة VIP">VIP</option>
+                </select>
+            </div>
+
+            <div id="usersError" class="msg error"></div>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                    <tr>
+                        <th>Username</th>
+                        <th>Password</th>
+                        <th>Telegram ID</th>
+                        <th>Name</th>
+                        <th>Country</th>
+                        <th>Plan</th>
+                        <th>Status</th>
+                        <th>Verified</th>
+                        <th>Capital</th>
+                        <th>Balance</th>
+                        <th>Profit</th>
+                        <th>Children</th>
+                    </tr>
+                    </thead>
+                    <tbody id="usersBody"></tbody>
+                </table>
+            </div>
         </div>
-      </section>
+    </section>
 
-      <section id="financial" class="hidden">
+    <section id="financialSection" class="hidden">
         <div class="panel">
-          <h3>📥 طلبات الإيداع</h3>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>User ID</th><th>Username</th><th>Plan</th><th>Amount</th><th>Type</th><th>Time</th><th>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="depBody"></tbody>
-            </table>
-          </div>
+            <h3>📥 طلبات الإيداع</h3>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                    <tr>
+                        <th>User ID</th><th>Username</th><th>Plan</th><th>Amount</th><th>Type</th><th>Time</th><th>Actions</th>
+                    </tr>
+                    </thead>
+                    <tbody id="pendingDepositsBody"></tbody>
+                </table>
+            </div>
         </div>
 
-        <div class="panel">
-          <h3>💸 طلبات السحب</h3>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>User ID</th><th>Username</th><th>Plan</th><th>Amount</th><th>Wallet</th><th>Network</th><th>Match</th><th>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="wdBody"></tbody>
-            </table>
-          </div>
+        <div class="panel" style="margin-top:18px;">
+            <h3>💸 طلبات سحب الأرباح</h3>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                    <tr>
+                        <th>User ID</th><th>Username</th><th>Plan</th><th>Amount</th><th>Time</th><th>Wallet</th><th>Network</th><th>Match</th><th>Actions</th>
+                    </tr>
+                    </thead>
+                    <tbody id="pendingWithdrawsBody"></tbody>
+                </table>
+            </div>
         </div>
 
-        <div class="panel">
-          <h3>🏦 طلبات رأس المال</h3>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>User ID</th><th>Username</th><th>Amount</th><th>Wallet</th><th>Network</th><th>Due</th><th>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="capBody"></tbody>
-            </table>
-          </div>
+        <div class="panel" style="margin-top:18px;">
+            <h3>🏦 طلبات سحب رأس المال</h3>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                    <tr>
+                        <th>User ID</th><th>Username</th><th>Amount</th><th>Wallet</th><th>Network</th><th>Admin Notified</th><th>Actions</th>
+                    </tr>
+                    </thead>
+                    <tbody id="capitalWithdrawsBody"></tbody>
+                </table>
+            </div>
         </div>
 
-        <div class="panel">
-          <h3>🪪 التوثيق</h3>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>User ID</th><th>Username</th><th>Name</th><th>Residence</th><th>Front</th><th>Back</th><th>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="verBody"></tbody>
-            </table>
-          </div>
+        <div class="panel" style="margin-top:18px;">
+            <h3>🪪 طلبات التوثيق</h3>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                    <tr>
+                        <th>User ID</th><th>Username</th><th>Name</th><th>Residence</th><th>Telegram</th><th>Time</th><th>Front</th><th>Back</th>
+                    </tr>
+                    </thead>
+                    <tbody id="verificationRequestsBody"></tbody>
+                </table>
+            </div>
         </div>
-      </section>
+    </section>
 
-      <section id="deleted" class="hidden">
-        <div class="panel">
-          <h3>🗑 سجل الحسابات المحذوفة</h3>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Username</th><th>TG</th><th>Name</th><th>Residence</th><th>Status</th><th>Plan</th><th>Capital</th><th>Balance</th><th>Profit</th><th>Deleted</th>
-                </tr>
-              </thead>
-              <tbody id="delBody"></tbody>
-            </table>
-          </div>
+    <section id="detailsSection" class="hidden">
+        <button class="btn-dark" onclick="showSection('users')">رجوع إلى المستخدمين</button>
+        <div id="detailsBox" style="margin-top:18px;"></div>
+    </section>
+
+</div>
+
+<div id="modal" class="modal hidden">
+    <div class="modal-box">
+        <div class="modal-head">
+            <h3 id="modalTitle">---</h3>
+            <button class="btn-dark" onclick="closeModal()">إغلاق</button>
         </div>
-      </section>
-
-      <section id="details" class="hidden">
-        <button class="dark" onclick="show('users')">رجوع للمستخدمين</button>
-        <div id="detailsBox"></div>
-      </section>
+        <div id="modalContent"></div>
+        <div id="modalMsg" class="msg"></div>
     </div>
+</div>
 
-    <div id="modal" class="modal hidden">
-      <div class="box">
-        <div class="box-head">
-          <h3 id="mt">---</h3>
-          <button class="dark" onclick="closeM()">إغلاق</button>
-        </div>
-        <div id="mc"></div>
-        <div id="mm" class="msg"></div>
-      </div>
-    </div>
+<div id="imageModal" class="modal hidden" onclick="closeImageModal()">
+    <img id="bigImage" style="max-width:92%;max-height:92%;border-radius:14px;" onclick="event.stopPropagation()">
+</div>
 
-    <div id="imgModal" class="modal hidden" onclick="closeImg()">
-      <img id="bigImg" style="max-width: 92%; max-height: 92%; border-radius: 14px" onclick="event.stopPropagation()" />
-    </div>
+<script>
+let usersChart = null;
+let plansChart = null;
+let currentDetailsUser = null;
+let countdownTimer = null;
 
-    <script>
-      let S = {};
-      let U = [];
-      let uc = null;
-      let pc = null;
-      let openedChildren = {};
-
-      const $ = (x) => document.getElementById(x);
-
-      const tok = () => localStorage.getItem("token");
-
-      const money = (v) => Number(v || 0).toFixed(2) + "$";
-
-      const safe = (v) =>
-        v == null || v === ""
-          ? "—"
-          : String(v)
-              .replaceAll("&", "&amp;")
-              .replaceAll("<", "&lt;")
-              .replaceAll(">", "&gt;")
-              .replaceAll('"', "&quot;")
-              .replaceAll("'", "&#039;");
-
-      const jsSafe = (v) =>
-        String(v ?? "")
-          .replaceAll("\\", "\\\\")
-          .replaceAll("'", "\\'")
-          .replaceAll('"', '\\"')
-          .replaceAll("\n", "\\n")
-          .replaceAll("\r", "");
-
-      const keySafe = (v) =>
-        String(v ?? "")
-          .replaceAll("\\", "\\\\")
-          .replaceAll('"', '\\"');
-
-      const fmt = (t) => {
-        let d = new Date(Number(t) * 1000);
-        return !t || isNaN(d) ? safe(t) : d.toLocaleString("ar");
-      };
-
-      const badge = (s) =>
-        s === "active"
-          ? '<span class="badge green">نشط</span>'
-          : s === "frozen"
-            ? '<span class="badge orange">مجمد</span>'
-            : s === "banned"
-              ? '<span class="badge red">محظور</span>'
-              : `<span class="badge">${safe(s)}</span>`;
-
-      async function api(url, o = {}) {
-        let h = o.headers || {};
-        h.Authorization = "Bearer " + tok();
-        if (o.body) h["Content-Type"] = "application/json";
-
-        let r = await fetch(url, { ...o, headers: h });
-        let d = await r.json().catch(() => ({}));
-
-        if (!r.ok) throw Error(d.detail || JSON.stringify(d));
-
-        return d;
-      }
-
-      const post = (u, b = {}) =>
-        api(u, {
-          method: "POST",
-          body: Object.keys(b).length ? JSON.stringify(b) : "{}",
-        });
-
-      async function login() {
-        let r = await fetch("/auth/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            username: $("u").value.trim(),
-            password: $("p").value.trim(),
-          }),
-        });
-
-        let d = await r.json();
-
-        if (r.ok) {
-          localStorage.setItem("token", d.access_token);
-          $("login").classList.add("hidden");
-          $("app").classList.remove("hidden");
-          refresh();
-        } else {
-          $("loginMsg").innerText = "فشل الدخول";
-        }
-      }
-
-      function logout() {
-        localStorage.removeItem("token");
-        location.reload();
-      }
-
-      function show(n) {
-        ["home", "users", "financial", "deleted", "details"].forEach((x) =>
-          $(x).classList.add("hidden")
-        );
-
-        $(n).classList.remove("hidden");
-
-        document.querySelectorAll(".nav button").forEach((b) => b.classList.remove("active"));
-        const nav = $("n" + n.charAt(0).toUpperCase() + n.slice(1));
-        if (nav) nav.classList.add("active");
-
-        if (n === "users") loadUsers();
-        if (n === "financial") loadFinancial();
-        if (n === "deleted") loadDeleted();
-      }
-
-      async function refresh() {
-        S = await api("/dashboard/summary");
-
-        [
-          "total_users:total",
-          "verified_users:verified",
-          "active_users:active",
-          "frozen_users:frozen",
-          "banned_users:banned",
-        ].forEach((x) => {
-          let [a, b] = x.split(":");
-          $(b).innerText = S[a];
-        });
-
-        $("capital").innerText = money(S.total_capital);
-        $("balances").innerText = money(S.total_balances);
-        $("profit").innerText = money(S.total_profit_only);
-
-        $("subB").className = "badge " + (S.subscriptions_open ? "green" : "red");
-        $("subB").innerText = "الاشتراك: " + (S.subscriptions_open ? "مفتوح" : "متوقف");
-
-        $("botB").className = "badge " + (S.bot_maintenance_mode ? "red" : "green");
-        $("botB").innerText = "البوت: " + (S.bot_maintenance_mode ? "صيانة" : "يعمل");
-
-        $("supB").className = "badge " + (S.support_employees_enabled ? "green" : "");
-        $("supB").innerText = "موظفو الدعم: " + (S.support_employees_enabled ? "مفعل" : "متوقف");
-
-        charts();
-      }
-
-      function charts() {
-
-  if (uc) uc.destroy();
-  if (pc) pc.destroy();
-
-  uc = new Chart($("usersChart"), {
-    type: "doughnut",
-    data: {
-      labels: ["نشط", "مجمد", "محظور"],
-      datasets: [{
-        data: [S.active_users, S.frozen_users, S.banned_users],
-        backgroundColor: ["#2563eb", "#f59e0b", "#dc2626"]
-      }]
-    },
-    options: {
-      maintainAspectRatio: false,
-      plugins: {
-        legend: {
-          labels: { color: "#fff" }
-        }
-      }
-    }
-  });
-
-  pc = new Chart($("plansChart"), {
-    type: "doughnut",
-    data: {
-      labels: ["فضي", "ذهبي", "VIP", "بدون"],
-      datasets: [{
-        data: [S.silver_users, S.gold_users, S.vip_users, S.no_plan_users],
-        backgroundColor: ["#64748b", "#f59e0b", "#7c3aed", "#475569"]
-      }]
-    },
-    options: {
-      maintainAspectRatio: false,
-      plugins: {
-        legend: {
-          labels: { color: "#fff" }
-        }
-      }
-    }
-  });
-
+function token() {
+    return localStorage.getItem("token");
 }
+
+function money(value) {
+    return Number(value || 0).toFixed(2) + "$";
+}
+
+function safeText(value) {
+    if (value === null || value === undefined || value === "") return "—";
+    return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+}
+
+function jsSafe(value) {
+    return String(value ?? "")
+        .replaceAll("\\", "\\\\")
+        .replaceAll("'", "\\'")
+        .replaceAll('"', '\\"')
+        .replaceAll("\n", "\\n")
+        .replaceAll("\r", "");
+}
+
+function formatTimestamp(ts) {
+    if (!ts) return "غير متاح";
+    const d = new Date(Number(ts) * 1000);
+    if (isNaN(d.getTime())) return safeText(ts);
+    return d.toLocaleString("ar");
+}
+
+function formatSeconds(seconds) {
+    if (seconds === null || seconds === undefined) return "غير متاح";
+    seconds = Math.max(0, Number(seconds));
+    const d = Math.floor(seconds / 86400);
+    const h = Math.floor((seconds % 86400) / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = Math.floor(seconds % 60);
+    return `${d} يوم، ${h} ساعة، ${m} دقيقة، ${s} ثانية`;
+}
+
+function statusBadge(status) {
+    if (status === "active") return '<span class="badge green">نشط</span>';
+    if (status === "frozen") return '<span class="badge orange">مجمد</span>';
+    if (status === "banned") return '<span class="badge red">محظور</span>';
+    return `<span class="badge">${safeText(status)}</span>`;
+}
+
+async function api(url, options = {}) {
+    const headers = options.headers || {};
+    headers["Authorization"] = "Bearer " + token();
+
+    if (options.body) {
+        headers["Content-Type"] = "application/json";
+    }
+
+    const res = await fetch(url, {...options, headers});
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+        throw new Error(data.detail || JSON.stringify(data));
+    }
+
+    return data;
+}
+
+async function login() {
+    const username = document.getElementById("adminUsername").value.trim();
+    const password = document.getElementById("adminPassword").value.trim();
+
+    document.getElementById("loginMsg").innerText = "";
+
+    try {
+        const res = await fetch("/auth/login", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({username, password})
+        });
+
+        const data = await res.json();
+
+        if (!res.ok || !data.access_token) {
+            document.getElementById("loginMsg").innerText = data.detail || "فشل تسجيل الدخول";
+            return;
+        }
+
+        localStorage.setItem("token", data.access_token);
+        document.getElementById("loginBox").classList.add("hidden");
+        document.getElementById("app").classList.remove("hidden");
+
+        await refreshAll();
+
+    } catch (e) {
+        document.getElementById("loginMsg").innerText = "خطأ اتصال";
+    }
+}
+
+function logout() {
+    localStorage.removeItem("token");
+    location.reload();
+}
+
+function setText(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.innerText = value;
+}
+
+function showSection(name) {
+    ["dashboard", "users", "financial", "details"].forEach(sec => {
+        document.getElementById(sec + "Section").classList.add("hidden");
+    });
+
+    document.getElementById(name + "Section").classList.remove("hidden");
+
+    document.querySelectorAll(".nav button").forEach(btn => btn.classList.remove("active"));
+
+    const nav = document.getElementById("nav" + name.charAt(0).toUpperCase() + name.slice(1));
+    if (nav) nav.classList.add("active");
+
+    if (name === "users") loadUsers();
+    if (name === "financial") loadFinancial();
+}
+
+async function refreshAll() {
+    await loadDashboard();
+
+    if (!document.getElementById("usersSection").classList.contains("hidden")) {
+        await loadUsers();
+    }
+
+    if (!document.getElementById("financialSection").classList.contains("hidden")) {
+        await loadFinancial();
+    }
+
+    if (currentDetailsUser) {
+        await openUserDetails(currentDetailsUser);
+    }
+}
+
+async function loadDashboard() {
+    const d = await api("/dashboard/summary");
+
+    setText("total_users", d.total_users || 0);
+    setText("verified_users", d.verified_users || 0);
+    setText("unverified_users", d.unverified_users || 0);
+    setText("active_users", d.active_users || 0);
+    setText("frozen_users", d.frozen_users || 0);
+    setText("banned_users", d.banned_users || 0);
+
+    setText("silver_users", d.silver_users || 0);
+    setText("gold_users", d.gold_users || 0);
+    setText("vip_users", d.vip_users || 0);
+    setText("no_plan_users", d.no_plan_users || 0);
+
+    setText("total_capital", money(d.total_capital));
+    setText("total_balances", money(d.total_balances));
+    setText("total_profit_only", money(d.total_profit_only));
+
+    setText("pending_deposits", d.pending_deposits || 0);
+    setText("pending_withdraws", d.pending_withdraws || 0);
+    setText("pending_capital_withdraws", d.pending_capital_withdraws || 0);
+
+    renderCharts(d);
+}
+
+function renderCharts(d) {
+    if (usersChart) usersChart.destroy();
+    if (plansChart) plansChart.destroy();
+
+    usersChart = new Chart(document.getElementById("usersChart"), {
+        type: "doughnut",
+        data: {
+            labels: ["نشط", "مجمد", "محظور"],
+            datasets: [{
+                data: [d.active_users || 0, d.frozen_users || 0, d.banned_users || 0],
+                backgroundColor: ["#2563eb", "#f59e0b", "#dc2626"]
+            }]
+        },
+        options: {
+            maintainAspectRatio: false,
+            plugins: {legend: {labels: {color: "#fff"}}}
+        }
+    });
+
+    plansChart = new Chart(document.getElementById("plansChart"), {
+        type: "doughnut",
+        data: {
+            labels: ["فضي", "ذهبي", "VIP", "بدون"],
+            datasets: [{
+                data: [d.silver_users || 0, d.gold_users || 0, d.vip_users || 0, d.no_plan_users || 0],
+                backgroundColor: ["#64748b", "#f59e0b", "#7c3aed", "#475569"]
+            }]
+        },
+        options: {
+            maintainAspectRatio: false,
+            plugins: {legend: {labels: {color: "#fff"}}}
+        }
+    });
+}
+
+async function loadUsers() {
+    const search = document.getElementById("searchInput").value || "";
+    const status = document.getElementById("statusFilter").value || "";
+    const plan = document.getElementById("planFilter").value || "";
+
+    const result = await api("/users/?search=" + encodeURIComponent(search));
+    const allUsers = result.users || [];
+
+    let users = allUsers.filter(u => {
+        const root = !u.referrer || u.referrer === "بدون دعوة" || u.referrer === "غير محدد" || u.referrer === "";
+        const statusOk = !status || u.status === status;
+        const planOk = !plan || u.plan === plan;
+        return root && statusOk && planOk;
+    });
+
+    const body = document.getElementById("usersBody");
+    const error = document.getElementById("usersError");
+
+    body.innerHTML = "";
+    error.innerText = "";
+
+    if (!users.length) {
+        error.innerText = "لا توجد بيانات مستخدمين";
+        return;
+    }
+
+    users.forEach(u => {
+        body.insertAdjacentHTML("beforeend", userRowHtml(u, 0, ""));
+    });
+}
+
+function userRowHtml(u, level, parent) {
+    const indent = "&nbsp;".repeat(level * 6);
+    const parentAttr = parent ? `data-parent="${safeText(parent)}"` : "";
+
+    return `
+        <tr class="${level ? "child-row" : ""}" ${parentAttr}>
+            <td>
+                ${level ? indent + "↳ " : ""}
+                <button class="btn-blue" onclick="openUserDetails('${jsSafe(u.username)}')">${safeText(u.username)}</button>
+            </td>
+            <td>${safeText(u.password)}</td>
+            <td>${safeText(u.telegram_id)}</td>
+            <td>${safeText(u.full_name)}</td>
+            <td>${safeText(u.residence)}</td>
+            <td>${safeText(u.plan)}</td>
+            <td>${statusBadge(u.status)}</td>
+            <td>${u.verified ? "✅" : "❌"}</td>
+            <td>${money(u.capital)}</td>
+            <td>${money(u.balance)}</td>
+            <td>${money(u.profit_only)}</td>
+            <td>
+                ${safeText(u.children_count || 0)}
+                <button class="btn-dark" onclick="loadChildren('${jsSafe(u.username)}', ${level + 1}, this.closest('tr'))">View</button>
+            </td>
+        </tr>
+    `;
+}
+
+async function loadChildren(username, level, parentRow) {
+    const existing = document.querySelectorAll(`tr[data-parent="${CSS.escape(username)}"]`);
+
+    if (existing.length > 0) {
+        existing.forEach(row => row.remove());
+        const btn = parentRow.querySelector("td:last-child button");
+        if (btn) btn.innerText = "View";
+        return;
+    }
+
+    const result = await api("/users/children/" + encodeURIComponent(username));
+    const children = result.children || [];
+
+    if (!children.length) {
+        alert("لا يوجد أبناء لهذا المستخدم");
+        return;
+    }
+
+    const btn = parentRow.querySelector("td:last-child button");
+    if (btn) btn.innerText = "Hide";
+
+    let html = "";
+    children.forEach(child => {
+        html += userRowHtml(child, level, username);
+    });
+
+    parentRow.insertAdjacentHTML("afterend", html);
+}
+
+async function openUserDetails(username) {
+    currentDetailsUser = username;
+    showSection("details");
+
+    const box = document.getElementById("detailsBox");
+    box.innerHTML = `<div class="panel"><h3>جار تحميل بيانات المستخدم...</h3></div>`;
+
+    const user = await api("/users/details/" + encodeURIComponent(username));
+
+    const profit = Number(user.profit_only ?? ((user.balance || 0) - (user.capital || 0)));
+
+    box.innerHTML = `
+        <div class="hero">
+            <div style="display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;">
+                <div>
+                    <h2>${safeText(user.username)}</h2>
+                    <div style="color:#dbeafe;margin-top:8px;">
+                        Telegram ID: ${safeText(user.telegram_id)} |
+                        Referrer: ${safeText(user.referrer)} |
+                        Children: ${safeText(user.children_count)}
+                    </div>
+                </div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    ${statusBadge(user.status)}
+                    <span class="badge ${user.verified ? "green" : "red"}">${user.verified ? "موثق ✅" : "غير موثق ❌"}</span>
+                    <span class="badge blue">${safeText(user.plan)}</span>
+                    <span class="badge ${user.manual_withdraw_open ? "green" : ""}">${user.manual_withdraw_open ? "السحب مفتوح" : "السحب مغلق"}</span>
+                </div>
+            </div>
+
+            <div class="metrics">
+                <div class="metric"><label>الرصيد</label><strong>${money(user.balance)}</strong></div>
+                <div class="metric"><label>رأس المال</label><strong>${money(user.capital)}</strong></div>
+                <div class="metric"><label>الأرباح</label><strong>${money(profit)}</strong></div>
+                <div class="metric"><label>عدد العمليات</label><strong>${safeText(user.transactions_count || 0)}</strong></div>
+                <div class="metric"><label>موعد الربح القادم</label><strong style="font-size:16px;">${formatTimestamp(user.next_profit_time)}</strong></div>
+                <div class="metric"><label>عداد الربح القادم</label><strong id="nextProfitCountdown" style="font-size:16px;">${formatSeconds(user.next_profit_seconds)}</strong></div>
+                <div class="metric"><label>موعد السحب القادم</label><strong style="font-size:16px;">${formatTimestamp(user.next_withdraw_time)}</strong></div>
+                <div class="metric"><label>عداد السحب</label><strong id="withdrawCountdown" style="font-size:16px;">${formatSeconds(user.withdraw_countdown_seconds)}</strong></div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="tabs">
+                <button class="active" onclick="switchDetailsTab('overview', this)">Overview</button>
+                <button onclick="switchDetailsTab('financial', this)">Financial</button>
+                <button onclick="switchDetailsTab('transactions', this)">Transactions</button>
+                <button onclick="switchDetailsTab('verification', this)">Verification</button>
+                <button onclick="switchDetailsTab('actions', this)">Actions</button>
+            </div>
+
+            <div id="tab-overview" class="details-tab">
+                <h3>👤 بيانات المستخدم</h3>
+                <div class="info-grid">
+                    ${infoItem("Username", user.username)}
+                    ${infoItem("Password", user.password)}
+                    ${infoItem("Telegram ID", user.telegram_id)}
+                    ${infoItem("Full Name", user.full_name)}
+                    ${infoItem("Residence", user.residence)}
+                    ${infoItem("Plan", user.plan)}
+                    ${infoItem("Status", user.status)}
+                    ${infoItem("Verified", user.verified ? "موثق" : "غير موثق")}
+                    ${infoItem("Referrer", user.referrer)}
+                    ${infoItem("Children Count", user.children_count)}
+                </div>
+            </div>
+
+            <div id="tab-financial" class="details-tab hidden">
+                <h3>💰 الحالة المالية</h3>
+                <div class="cards-grid">
+                    <div class="card"><div class="card-title">Balance</div><div class="card-value">${money(user.balance)}</div></div>
+                    <div class="card"><div class="card-title">Capital</div><div class="card-value">${money(user.capital)}</div></div>
+                    <div class="card"><div class="card-title">Profit</div><div class="card-value">${money(profit)}</div></div>
+                    <div class="card"><div class="card-title">Manual Withdraw</div><div class="card-value">${user.manual_withdraw_open ? "Open" : "Closed"}</div></div>
+                </div>
+
+                <h3 class="section-title">📥 Deposits</h3>
+                ${tableRows(user.deposits, "deposit")}
+
+                <h3 class="section-title">💸 Withdraws</h3>
+                ${tableRows(user.withdraws, "withdraw")}
+            </div>
+
+            <div id="tab-transactions" class="details-tab hidden">
+                <h3>📜 العمليات</h3>
+                ${tableRows(user.transactions, "transaction")}
+            </div>
+
+            <div id="tab-verification" class="details-tab hidden">
+                <h3>🪪 التوثيق</h3>
+                <div class="cards-grid">
+                    <div class="card">
+                        <div class="card-title">صورة الهوية الأمامية</div>
+                        ${user.front_id_url ? `<img class="img-thumb" src="${user.front_id_url}" onclick="showImage('${user.front_id_url}')">` : "لا توجد"}
+                    </div>
+                    <div class="card">
+                        <div class="card-title">صورة الهوية الخلفية</div>
+                        ${user.back_id_url ? `<img class="img-thumb" src="${user.back_id_url}" onclick="showImage('${user.back_id_url}')">` : "لا توجد"}
+                    </div>
+                </div>
+            </div>
+
+            <div id="tab-actions" class="details-tab hidden">
+                <h3>⚙️ التحكم بالمستخدم</h3>
+                <div class="action-row">
+                    <button class="btn-red" onclick="banUser('${jsSafe(user.username)}')">Ban</button>
+                    <button class="btn-green" onclick="unbanUser('${jsSafe(user.username)}')">Unban</button>
+                    <button class="btn-orange" onclick="freezeUser('${jsSafe(user.username)}')">Freeze</button>
+                    <button class="btn-blue" onclick="unfreezeUser('${jsSafe(user.username)}')">Unfreeze</button>
+                </div>
+
+                <h3 class="section-title">Financial Control</h3>
+                <div class="action-row">
+                    <button class="btn-green" onclick="addBalanceUser('${jsSafe(user.username)}')">+ Balance</button>
+                    <button class="btn-red" onclick="subtractBalanceUser('${jsSafe(user.username)}')">- Balance</button>
+                    <button class="btn-purple" onclick="changePlanUser('${jsSafe(user.username)}')">Change Plan</button>
+                    <button class="btn-dark" onclick="resetWithdrawUser('${jsSafe(user.username)}')">Reset Withdraw</button>
+                    <button class="btn-green" onclick="openWithdrawUser('${jsSafe(user.username)}')">Open Withdraw</button>
+                    <button class="btn-red" onclick="closeWithdrawUser('${jsSafe(user.username)}')">Close Withdraw</button>
+                </div>
+
+                <div class="panel danger-zone">
+                    <h3>Danger Zone</h3>
+                    <button class="btn-black" onclick="deleteSubscriptionUser('${jsSafe(user.username)}')">Delete Subscription</button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    startCountdowns(user.next_profit_seconds, user.withdraw_countdown_seconds);
+}
+
+function infoItem(label, value) {
+    return `
+        <div class="info-item">
+            <div class="info-label">${safeText(label)}</div>
+            <div class="info-value">${safeText(value)}</div>
+        </div>
+    `;
+}
+
+function tableRows(items, fallbackType) {
+    const rows = Array.isArray(items) ? items : [];
+
+    return `
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr><th>Type</th><th>Amount</th><th>Note</th><th>Time</th></tr>
+                </thead>
+                <tbody>
+                    ${
+                        rows.length
+                        ? rows.slice().reverse().map(tx => `
+                            <tr>
+                                <td>${safeText(tx.type || fallbackType)}</td>
+                                <td>${money(tx.amount || 0)}</td>
+                                <td>${safeText(tx.note || tx.status || "—")}</td>
+                                <td>${safeText(tx.time || "—")}</td>
+                            </tr>
+                        `).join("")
+                        : `<tr><td colspan="4">لا توجد بيانات</td></tr>`
+                    }
+                </tbody>
+            </table>
+        </div>
+    `;
+}
+
+function switchDetailsTab(tab, btn) {
+    document.querySelectorAll(".details-tab").forEach(el => el.classList.add("hidden"));
+    document.getElementById("tab-" + tab).classList.remove("hidden");
+
+    document.querySelectorAll(".tabs button").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+}
+
+function startCountdowns(profitSeconds, withdrawSeconds) {
+    if (countdownTimer) clearInterval(countdownTimer);
+
+    let p = profitSeconds;
+    let w = withdrawSeconds;
+
+    function tick() {
+        const pEl = document.getElementById("nextProfitCountdown");
+        const wEl = document.getElementById("withdrawCountdown");
+
+        if (pEl) pEl.innerText = formatSeconds(p);
+        if (wEl) wEl.innerText = formatSeconds(w);
+
+        if (p !== null && p !== undefined && p > 0) p--;
+        if (w !== null && w !== undefined && w > 0) w--;
+    }
+
+    tick();
+    countdownTimer = setInterval(tick, 1000);
+}
+
+async function loadFinancial() {
+    await Promise.all([
+        loadPendingDeposits(),
+        loadPendingWithdraws(),
+        loadCapitalWithdraws(),
+        loadVerificationRequests()
+    ]);
+}
+
+async function loadPendingDeposits() {
+    const result = await api("/financial/pending-deposits");
+    const body = document.getElementById("pendingDepositsBody");
+    const items = result.pending_deposits || [];
+
+    body.innerHTML = items.length ? "" : `<tr><td colspan="7">لا توجد طلبات</td></tr>`;
+
+    items.forEach(item => {
+        body.insertAdjacentHTML("beforeend", `
+            <tr>
+                <td>${safeText(item.user_id)}</td>
+                <td>${safeText(item.username)}</td>
+                <td>${safeText(item.plan)}</td>
+                <td>${money(item.amount)}</td>
+                <td>${safeText(item.type)}</td>
+                <td>${safeText(item.time)}</td>
+                <td>
+                    <button class="btn-green" onclick="approveDeposit('${jsSafe(item.user_id)}')">Approve</button>
+                    <button class="btn-red" onclick="rejectDeposit('${jsSafe(item.user_id)}')">Reject</button>
+                </td>
+            </tr>
+        `);
+    });
+}
+
+async function loadPendingWithdraws() {
+    const result = await api("/financial/pending-withdraws");
+    const body = document.getElementById("pendingWithdrawsBody");
+    const items = result.pending_withdraws || [];
+
+    body.innerHTML = items.length ? "" : `<tr><td colspan="9">لا توجد طلبات</td></tr>`;
+
+    items.forEach(item => {
+        body.insertAdjacentHTML("beforeend", `
+            <tr>
+                <td>${safeText(item.user_id)}</td>
+                <td>${safeText(item.username)}</td>
+                <td>${safeText(item.plan)}</td>
+                <td>${money(item.amount)}</td>
+                <td>${safeText(item.time)}</td>
+                <td>${safeText(item.withdraw_wallet_address)}</td>
+                <td>${safeText(item.withdraw_wallet_network)}</td>
+                <td>${safeText(item.wallets_match_result)}</td>
+                <td>
+                    <button class="btn-green" onclick="approveWithdraw('${jsSafe(item.user_id)}')">Approve</button>
+                    <button class="btn-red" onclick="rejectWithdraw('${jsSafe(item.user_id)}')">Reject</button>
+                </td>
+            </tr>
+        `);
+    });
+}
+
+async function loadCapitalWithdraws() {
+    const result = await api("/financial/capital-withdraws");
+    const body = document.getElementById("capitalWithdrawsBody");
+    const items = result.capital_withdraws || [];
+
+    body.innerHTML = items.length ? "" : `<tr><td colspan="7">لا توجد طلبات</td></tr>`;
+
+    items.forEach(item => {
+        body.insertAdjacentHTML("beforeend", `
+            <tr>
+                <td>${safeText(item.user_id)}</td>
+                <td>${safeText(item.username)}</td>
+                <td>${money(item.amount)}</td>
+                <td>${safeText(item.wallet)}</td>
+                <td>${safeText(item.network)}</td>
+                <td>${item.admin_notified ? "✅" : "❌"}</td>
+                <td>
+                    <button class="btn-black" onclick="capitalPaid('${jsSafe(item.user_id)}')">Paid</button>
+                </td>
+            </tr>
+        `);
+    });
+}
+
+async function loadVerificationRequests() {
+    const result = await api("/financial/verification-requests");
+    const body = document.getElementById("verificationRequestsBody");
+    const items = result.verification_requests || [];
+
+    body.innerHTML = items.length ? "" : `<tr><td colspan="8">لا توجد طلبات</td></tr>`;
+
+    items.forEach(item => {
+        body.insertAdjacentHTML("beforeend", `
+            <tr>
+                <td>${safeText(item.user_id)}</td>
+                <td>${safeText(item.username)}</td>
+                <td>${safeText(item.full_name)}</td>
+                <td>${safeText(item.residence)}</td>
+                <td>${safeText(item.telegram_username)}</td>
+                <td>${safeText(item.time)}</td>
+                <td>${item.front_id_url ? `<img class="img-thumb" src="${item.front_id_url}" onclick="showImage('${item.front_id_url}')">` : "—"}</td>
+                <td>${item.back_id_url ? `<img class="img-thumb" src="${item.back_id_url}" onclick="showImage('${item.back_id_url}')">` : "—"}</td>
+            </tr>
+        `);
+    });
+}
+
+async function approveDeposit(userId) {
+    if (!confirm("الموافقة على الإيداع؟")) return;
+    await api("/financial/approve-deposit", {
+        method: "POST",
+        body: JSON.stringify({user_id: Number(userId)})
+    });
+    alert("تمت الموافقة");
+    await refreshAll();
+}
+
+async function rejectDeposit(userId) {
+    if (!confirm("رفض الإيداع؟")) return;
+    await api("/financial/reject-deposit", {
+        method: "POST",
+        body: JSON.stringify({user_id: Number(userId)})
+    });
+    alert("تم الرفض");
+    await refreshAll();
+}
+
+async function approveWithdraw(userId) {
+    if (!confirm("الموافقة على السحب؟")) return;
+    await api("/financial/approve-withdraw", {
+        method: "POST",
+        body: JSON.stringify({user_id: Number(userId)})
+    });
+    alert("تمت الموافقة");
+    await refreshAll();
+}
+
+async function rejectWithdraw(userId) {
+    if (!confirm("رفض السحب؟")) return;
+    await api("/financial/reject-withdraw", {
+        method: "POST",
+        body: JSON.stringify({user_id: Number(userId)})
+    });
+    alert("تم الرفض");
+    await refreshAll();
+}
+
+async function capitalPaid(userId) {
+    if (!confirm("تأكيد دفع رأس المال؟ سيتم تصفير الحساب وإغلاق الباقة.")) return;
+    await api("/financial/capital-paid", {
+        method: "POST",
+        body: JSON.stringify({user_id: Number(userId)})
+    });
+    alert("تم تأكيد الدفع");
+    await refreshAll();
+}
+
+async function userAction(endpoint, username, successMsg) {
+    await api(endpoint, {
+        method: "POST",
+        body: JSON.stringify({username})
+    });
+    alert(successMsg);
+    await refreshAll();
+}
+
+function banUser(username) {
+    if (!confirm("حظر المستخدم؟")) return;
+    userAction("/users/ban", username, "تم الحظر");
+}
+
+function unbanUser(username) {
+    if (!confirm("فك الحظر؟")) return;
+    userAction("/users/unban", username, "تم فك الحظر");
+}
+
+function freezeUser(username) {
+    if (!confirm("تجميد المستخدم؟")) return;
+    userAction("/users/freeze", username, "تم التجميد");
+}
+
+function unfreezeUser(username) {
+    if (!confirm("فك التجميد؟")) return;
+    userAction("/users/unfreeze", username, "تم فك التجميد");
+}
+
+async function addBalanceUser(username) {
+    const amount = prompt("أدخل قيمة الإضافة:");
+    if (!amount || isNaN(amount)) return alert("قيمة غير صحيحة");
+
+    await api("/users/add-balance", {
+        method: "POST",
+        body: JSON.stringify({username, amount: Number(amount)})
+    });
+
+    alert("تمت إضافة الرصيد");
+    await refreshAll();
+}
+
+async function subtractBalanceUser(username) {
+    const amount = prompt("أدخل قيمة الخصم:");
+    if (!amount || isNaN(amount)) return alert("قيمة غير صحيحة");
+
+    await api("/users/subtract-balance", {
+        method: "POST",
+        body: JSON.stringify({username, amount: Number(amount)})
+    });
+
+    alert("تم الخصم");
+    await refreshAll();
+}
+
+async function changePlanUser(username) {
+    const plan = prompt("اكتب نوع الباقة:\nsilver\ngold\nvip");
+    if (!plan) return;
+
+    const code = plan.trim().toLowerCase();
+
+    if (!["silver", "gold", "vip"].includes(code)) {
+        alert("قيمة غير صحيحة");
+        return;
+    }
+
+    await api("/users/change-plan", {
+        method: "POST",
+        body: JSON.stringify({username, plan_code: code})
+    });
+
+    alert("تم تغيير الباقة");
+    await refreshAll();
+}
+
+function resetWithdrawUser(username) {
+    if (!confirm("إعادة ضبط دورة السحب؟")) return;
+    userAction("/users/reset-withdraw", username, "تمت إعادة الضبط");
+}
+
+function openWithdrawUser(username) {
+    if (!confirm("فتح السحب؟")) return;
+    userAction("/users/open-withdraw", username, "تم فتح السحب");
+}
+
+function closeWithdrawUser(username) {
+    if (!confirm("إغلاق السحب؟")) return;
+    userAction("/users/close-withdraw", username, "تم إغلاق السحب");
+}
+
+async function deleteSubscriptionUser(username) {
+    if (!confirm("تحذير: سيتم حذف الاشتراك وتصفير الحساب. هل أنت متأكد؟")) return;
+    if (!confirm("تأكيد نهائي؟")) return;
+
+    await api("/users/delete-subscription", {
+        method: "POST",
+        body: JSON.stringify({username})
+    });
+
+    alert("تم حذف الاشتراك");
+    await refreshAll();
+}
+
+function showImage(url) {
+    document.getElementById("bigImage").src = url;
+    document.getElementById("imageModal").classList.remove("hidden");
+}
+
+function closeImageModal() {
+    document.getElementById("imageModal").classList.add("hidden");
+}
+
+function openModal(title, content) {
+    document.getElementById("modalTitle").innerText = title;
+    document.getElementById("modalContent").innerHTML = content;
+    document.getElementById("modalMsg").innerText = "";
+    document.getElementById("modal").classList.remove("hidden");
+}
+
+function closeModal() {
+    document.getElementById("modal").classList.add("hidden");
+}
+
+function summaryModal() {
+    openModal("📊 الملخص المالي", `
+        <div class="cards-grid">
+            <div class="card"><div class="card-title">رأس المال</div><div class="card-value">${document.getElementById("total_capital").innerText}</div></div>
+            <div class="card"><div class="card-title">الأرصدة</div><div class="card-value">${document.getElementById("total_balances").innerText}</div></div>
+            <div class="card"><div class="card-title">الأرباح</div><div class="card-value">${document.getElementById("total_profit_only").innerText}</div></div>
+        </div>
+    `);
+}
+
+window.onload = async function () {
+    if (token()) {
+        document.getElementById("loginBox").classList.add("hidden");
+        document.getElementById("app").classList.remove("hidden");
+
+        try {
+            await refreshAll();
+        } catch (e) {
+            localStorage.removeItem("token");
+            location.reload();
+        }
+    }
+};
+</script>
+
+</body>
+</html>
