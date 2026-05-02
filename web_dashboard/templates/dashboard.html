@@ -947,6 +947,71 @@ function switchUserTab(tabName, btn) {
     }
 }
 
+let userCountdownTimer = null;
+
+function formatSeconds(seconds) {
+    if (seconds === null || seconds === undefined) return "غير متاح";
+
+    seconds = Math.max(0, Number(seconds));
+
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+
+    return `${days} يوم، ${hours} ساعة، ${minutes} دقيقة، ${secs} ثانية`;
+}
+
+function formatTimestamp(ts) {
+    if (!ts) return "غير متاح";
+
+    const date = new Date(Number(ts) * 1000);
+
+    if (isNaN(date.getTime())) return "غير متاح";
+
+    return date.toLocaleString("ar", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit"
+    });
+}
+
+function startUserCountdowns(nextProfitSeconds, withdrawSeconds) {
+    if (userCountdownTimer) {
+        clearInterval(userCountdownTimer);
+    }
+
+    let profitLeft = nextProfitSeconds;
+    let withdrawLeft = withdrawSeconds;
+
+    function tick() {
+        const profitEl = document.getElementById("nextProfitCountdown");
+        const withdrawEl = document.getElementById("withdrawCountdown");
+
+        if (profitEl) {
+            profitEl.innerText = formatSeconds(profitLeft);
+        }
+
+        if (withdrawEl) {
+            withdrawEl.innerText = formatSeconds(withdrawLeft);
+        }
+
+        if (profitLeft !== null && profitLeft !== undefined && profitLeft > 0) {
+            profitLeft--;
+        }
+
+        if (withdrawLeft !== null && withdrawLeft !== undefined && withdrawLeft > 0) {
+            withdrawLeft--;
+        }
+    }
+
+    tick();
+    userCountdownTimer = setInterval(tick, 1000);
+}
+
 async function openUserDetails(username) {
     document.getElementById("dashboardSection").classList.add("hidden");
     document.getElementById("financialSection").classList.add("hidden");
@@ -971,6 +1036,8 @@ async function openUserDetails(username) {
 
     const profit = Number(user.profit_only ?? ((user.balance || 0) - (user.capital || 0)));
     const safeUsername = safeText(user.username);
+    const nextProfitSeconds = user.next_profit_seconds;
+    const withdrawSeconds = user.withdraw_countdown_seconds;
 
     box.innerHTML = `
         <div class="user-profile-shell">
@@ -1017,6 +1084,34 @@ async function openUserDetails(username) {
                     <div class="metric-card">
                         <div class="metric-label">عدد العمليات</div>
                         <div class="metric-value">${safeText(user.transactions_count || 0)}</div>
+                    </div>
+
+                    <div class="metric-card">
+                        <div class="metric-label">الربح القادم</div>
+                        <div class="metric-value" style="font-size:18px;">
+                            ${formatTimestamp(user.next_profit_time)}
+                        </div>
+                    </div>
+
+                    <div class="metric-card">
+                        <div class="metric-label">عداد الربح القادم</div>
+                        <div class="metric-value" id="nextProfitCountdown" style="font-size:18px;">
+                            ${formatSeconds(nextProfitSeconds)}
+                        </div>
+                    </div>
+
+                    <div class="metric-card">
+                        <div class="metric-label">موعد السحب القادم</div>
+                        <div class="metric-value" style="font-size:18px;">
+                            ${formatTimestamp(user.next_withdraw_time)}
+                        </div>
+                    </div>
+
+                    <div class="metric-card">
+                        <div class="metric-label">عداد السحب</div>
+                        <div class="metric-value" id="withdrawCountdown" style="font-size:18px;">
+                            ${formatSeconds(withdrawSeconds)}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1226,6 +1321,7 @@ async function openUserDetails(username) {
 
         </div>
     `;
+    startUserCountdowns(nextProfitSeconds, withdrawSeconds);
 }
 
 function showTab(tab) {
