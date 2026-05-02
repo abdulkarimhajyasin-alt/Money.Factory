@@ -369,6 +369,54 @@
             color: #e5e7eb;
             font-size: 14px;
         }
+
+        .withdraw-progress-box {
+    background: rgba(15,23,42,0.88);
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 24px;
+    padding: 22px;
+    margin-top: 12px;
+}
+
+.withdraw-progress-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+    color: #dbeafe;
+    font-weight: 900;
+}
+
+.withdraw-progress-head strong {
+    font-size: 28px;
+    color: #22c55e;
+}
+
+.withdraw-progress-track {
+    width: 100%;
+    height: 34px;
+    background: rgba(255,255,255,0.10);
+    border-radius: 999px;
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.16);
+}
+
+.withdraw-progress-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #2563eb, #22c55e);
+    border-radius: 999px;
+    transition: width 0.7s ease;
+}
+
+.withdraw-progress-info {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 12px;
+    font-size: 12px;
+    color: #cbd5e1;
+}
     </style>
 </head>
 
@@ -483,11 +531,25 @@
         </div>
 
         <div class="panel">
-            <h3>رسم توضيحي مالي</h3>
-            <div class="chart-box">
-                <canvas id="financeChart"></canvas>
-            </div>
+    <h3>📊 تقدم دورة السحب</h3>
+
+    <div class="withdraw-progress-box">
+        <div class="withdraw-progress-head">
+            <span>نسبة اكتمال دورة السحب</span>
+            <strong id="withdrawProgressPercent">0%</strong>
         </div>
+
+        <div class="withdraw-progress-track">
+            <div id="withdrawProgressFill" class="withdraw-progress-fill"></div>
+        </div>
+
+        <div class="withdraw-progress-info">
+            <span>بداية الدورة</span>
+            <span id="withdrawProgressText">0% مكتمل</span>
+            <span>موعد السحب</span>
+        </div>
+    </div>
+</div>
     </div>
 
 </div>
@@ -725,7 +787,7 @@ function renderUser() {
         currentUser.withdraw_countdown_seconds
     );
 
-    renderChart();
+    renderWithdrawProgress();
 }
 
 function startCountdowns(profitSeconds, withdrawSeconds) {
@@ -744,32 +806,72 @@ function startCountdowns(profitSeconds, withdrawSeconds) {
 
     tick();
     countdownTimer = setInterval(tick, 1000);
+
+    renderWithdrawProgressLive(w);
 }
 
-function renderChart() {
-    const ctx = document.getElementById("financeChart");
+function renderWithdrawProgressLive(remainingSeconds) {
+    const days = getWithdrawCycleDays(currentUser.plan);
 
-    if (financeChart) financeChart.destroy();
+    if (!days) return;
 
-    financeChart = new Chart(ctx, {
-        type: "doughnut",
-        data: {
-            labels: ["رأس المال", "الأرباح"],
-            datasets: [{
-                data: [currentUser.capital || 0, currentUser.profit_only || 0],
-                backgroundColor: ["#2563eb", "#22c55e"]
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    labels: {color: "#fff"}
-                }
-            }
-        }
-    });
+    const percentEl = document.getElementById("withdrawProgressPercent");
+    const fillEl = document.getElementById("withdrawProgressFill");
+    const textEl = document.getElementById("withdrawProgressText");
+
+    if (!percentEl || !fillEl || !textEl) return;
+
+    const totalSeconds = days * 24 * 60 * 60;
+    const remaining = Math.max(0, Number(remainingSeconds));
+    const elapsed = Math.max(0, totalSeconds - remaining);
+
+    let percent = (elapsed / totalSeconds) * 100;
+
+    if (percent > 100) percent = 100;
+    if (percent < 0) percent = 0;
+
+    const rounded = percent.toFixed(2);
+
+    percentEl.innerText = rounded + "%";
+    fillEl.style.width = rounded + "%";
+    textEl.innerText = rounded + "% مكتمل";
+}
+
+function getWithdrawCycleDays(plan) {
+    if (plan === "الباقة الفضية") return 30;
+    if (plan === "الباقة الذهبية") return 20;
+    if (plan === "باقة VIP") return 10;
+    return null;
+}
+
+function renderWithdrawProgress() {
+    const days = getWithdrawCycleDays(currentUser.plan);
+
+    const percentEl = document.getElementById("withdrawProgressPercent");
+    const fillEl = document.getElementById("withdrawProgressFill");
+    const textEl = document.getElementById("withdrawProgressText");
+
+    if (!days || currentUser.withdraw_countdown_seconds === null || currentUser.withdraw_countdown_seconds === undefined) {
+        percentEl.innerText = "0%";
+        fillEl.style.width = "0%";
+        textEl.innerText = "غير متاح";
+        return;
+    }
+
+    const totalSeconds = days * 24 * 60 * 60;
+    const remainingSeconds = Math.max(0, Number(currentUser.withdraw_countdown_seconds));
+    const elapsedSeconds = Math.max(0, totalSeconds - remainingSeconds);
+
+    let percent = (elapsedSeconds / totalSeconds) * 100;
+
+    if (percent > 100) percent = 100;
+    if (percent < 0) percent = 0;
+
+    const rounded = percent.toFixed(2);
+
+    percentEl.innerText = rounded + "%";
+    fillEl.style.width = rounded + "%";
+    textEl.innerText = rounded + "% مكتمل";
 }
 
 function openModal(title, html) {
