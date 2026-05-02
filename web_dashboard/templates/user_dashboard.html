@@ -1,0 +1,1022 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>Money Factory | User Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: Tahoma, Arial, sans-serif;
+            background:
+                radial-gradient(circle at top right, rgba(37,99,235,0.20), transparent 30%),
+                linear-gradient(135deg, #020617, #0f172a);
+            color: #f8fafc;
+            min-height: 100vh;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .container {
+            width: min(1200px, 94%);
+            margin: auto;
+            padding: 24px 0 40px;
+        }
+
+        .login-card {
+            width: min(420px, 94%);
+            margin: 80px auto;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.14);
+            border-radius: 28px;
+            padding: 28px;
+            box-shadow: 0 22px 70px rgba(0,0,0,0.35);
+            backdrop-filter: blur(18px);
+        }
+
+        .login-card h1 {
+            text-align: center;
+            margin: 0 0 10px;
+            font-size: 28px;
+        }
+
+        .login-card p {
+            text-align: center;
+            color: #cbd5e1;
+            margin-bottom: 24px;
+        }
+
+        input, textarea, select {
+            width: 100%;
+            border: 1px solid rgba(255,255,255,0.16);
+            background: rgba(15,23,42,0.88);
+            color: white;
+            border-radius: 16px;
+            padding: 13px 14px;
+            outline: none;
+            margin: 7px 0;
+        }
+
+        input:focus, textarea:focus, select:focus {
+            border-color: #38bdf8;
+        }
+
+        button {
+            border: none;
+            cursor: pointer;
+            border-radius: 16px;
+            padding: 12px 18px;
+            font-weight: 900;
+        }
+
+        .primary-btn {
+            width: 100%;
+            background: linear-gradient(135deg, #2563eb, #06b6d4);
+            color: white;
+            margin-top: 12px;
+        }
+
+        .danger-btn {
+            background: #dc2626;
+            color: white;
+        }
+
+        .topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 14px;
+            flex-wrap: wrap;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 26px;
+            padding: 18px;
+            margin-bottom: 18px;
+            backdrop-filter: blur(18px);
+        }
+
+        .brand h1 {
+            margin: 0;
+            font-size: 28px;
+        }
+
+        .brand span {
+            color: #cbd5e1;
+            font-size: 13px;
+        }
+
+        .user-chip {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(255,255,255,0.10);
+            padding: 10px 14px;
+            border-radius: 999px;
+        }
+
+        .hero {
+            background: linear-gradient(135deg, rgba(37,99,235,0.95), rgba(15,23,42,0.95));
+            border: 1px solid rgba(255,255,255,0.14);
+            border-radius: 32px;
+            padding: 24px;
+            box-shadow: 0 24px 80px rgba(0,0,0,0.35);
+            margin-bottom: 18px;
+        }
+
+        .hero-head {
+            display: flex;
+            justify-content: space-between;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .hero h2 {
+            margin: 0;
+            font-size: 34px;
+        }
+
+        .badges {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 12px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 900;
+            background: rgba(255,255,255,0.15);
+        }
+
+        .badge.green { background: #16a34a; }
+        .badge.red { background: #dc2626; }
+        .badge.orange { background: #f59e0b; color: #111827; }
+        .badge.blue { background: #2563eb; }
+
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+            gap: 14px;
+            margin-top: 22px;
+        }
+
+        .metric {
+            background: rgba(255,255,255,0.12);
+            border: 1px solid rgba(255,255,255,0.14);
+            border-radius: 24px;
+            padding: 18px;
+        }
+
+        .metric label {
+            display: block;
+            color: #dbeafe;
+            font-size: 13px;
+            margin-bottom: 8px;
+        }
+
+        .metric strong {
+            font-size: 28px;
+        }
+
+        .layout {
+            display: grid;
+            grid-template-columns: 1.1fr 0.9fr;
+            gap: 18px;
+        }
+
+        .panel {
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 28px;
+            padding: 18px;
+            backdrop-filter: blur(18px);
+            box-shadow: 0 20px 70px rgba(0,0,0,0.25);
+        }
+
+        .panel h3 {
+            margin-top: 0;
+        }
+
+        .actions-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px;
+        }
+
+        .action-card {
+            background: rgba(255,255,255,0.10);
+            color: white;
+            min-height: 92px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 8px;
+            border-radius: 24px;
+            border: 1px solid rgba(255,255,255,0.12);
+            transition: 0.2s ease;
+            font-size: 16px;
+        }
+
+        .action-card:hover {
+            transform: translateY(-3px);
+            background: rgba(37,99,235,0.55);
+        }
+
+        .action-card span {
+            font-size: 30px;
+        }
+
+        .plans {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+            gap: 12px;
+        }
+
+        .plan-card {
+            background: rgba(15,23,42,0.92);
+            border: 1px solid rgba(255,255,255,0.14);
+            border-radius: 24px;
+            padding: 18px;
+        }
+
+        .plan-card h4 {
+            margin: 0 0 8px;
+            font-size: 20px;
+        }
+
+        .chart-box {
+            height: 260px;
+        }
+
+        .modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.76);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            padding: 20px;
+        }
+
+        .modal-box {
+            width: min(620px, 96%);
+            max-height: 90vh;
+            overflow: auto;
+            background: #0f172a;
+            border: 1px solid rgba(255,255,255,0.14);
+            border-radius: 28px;
+            padding: 22px;
+        }
+
+        .modal-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .close-btn {
+            background: #334155;
+            color: white;
+        }
+
+        .table-wrap {
+            overflow: auto;
+            border-radius: 18px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 680px;
+            background: rgba(15,23,42,0.88);
+        }
+
+        th, td {
+            padding: 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            text-align: center;
+            font-size: 13px;
+        }
+
+        th {
+            color: #bae6fd;
+        }
+
+        .msg {
+            margin-top: 10px;
+            color: #facc15;
+            font-weight: 900;
+        }
+
+        .success {
+            color: #22c55e;
+        }
+
+        .error {
+            color: #ef4444;
+        }
+
+        @media (max-width: 850px) {
+            .layout {
+                grid-template-columns: 1fr;
+            }
+
+            .hero h2 {
+                font-size: 26px;
+            }
+
+            .metric strong {
+                font-size: 22px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<div id="loginView" class="login-card">
+    <h1>Money Factory</h1>
+    <p>تسجيل دخول المستخدم إلى لوحة التحكم الخاصة به</p>
+
+    <input id="loginUsername" placeholder="اسم المستخدم">
+    <input id="loginPassword" type="password" placeholder="كلمة المرور">
+
+    <button class="primary-btn" onclick="loginUser()">دخول</button>
+
+    <div id="loginMsg" class="msg"></div>
+</div>
+
+<div id="appView" class="container hidden">
+
+    <div class="topbar">
+        <div class="brand">
+            <h1>لوحة المستخدم</h1>
+            <span>تابع أرباحك، باقتك، السحب، الإيداع، والتوثيق من مكان واحد</span>
+        </div>
+
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+            <div class="user-chip">
+                👤 <strong id="topUsername">---</strong>
+            </div>
+            <button class="danger-btn" onclick="logoutUser()">تسجيل خروج</button>
+        </div>
+    </div>
+
+    <div class="hero">
+        <div class="hero-head">
+            <div>
+                <h2 id="heroName">---</h2>
+                <div style="color:#dbeafe;margin-top:8px;">
+                    Telegram ID: <span id="telegramId">---</span> |
+                    المدعوون: <span id="childrenCount">0</span>
+                </div>
+            </div>
+
+            <div class="badges">
+                <span id="statusBadge" class="badge">---</span>
+                <span id="verifiedBadge" class="badge">---</span>
+                <span id="planBadge" class="badge blue">---</span>
+            </div>
+        </div>
+
+        <div class="metrics">
+            <div class="metric">
+                <label>الرصيد الحالي</label>
+                <strong id="balance">0$</strong>
+            </div>
+
+            <div class="metric">
+                <label>رأس المال</label>
+                <strong id="capital">0$</strong>
+            </div>
+
+            <div class="metric">
+                <label>الأرباح القابلة للسحب</label>
+                <strong id="profit">0$</strong>
+            </div>
+
+            <div class="metric">
+                <label>الربح اليومي</label>
+                <strong id="dailyProfit">0$</strong>
+            </div>
+
+            <div class="metric">
+                <label>موعد الربح القادم</label>
+                <strong id="nextProfitTime" style="font-size:16px;">غير متاح</strong>
+            </div>
+
+            <div class="metric">
+                <label>عداد الربح القادم</label>
+                <strong id="nextProfitCountdown" style="font-size:16px;">غير متاح</strong>
+            </div>
+
+            <div class="metric">
+                <label>موعد السحب القادم</label>
+                <strong id="nextWithdrawTime" style="font-size:16px;">غير متاح</strong>
+            </div>
+
+            <div class="metric">
+                <label>عداد السحب</label>
+                <strong id="withdrawCountdown" style="font-size:16px;">غير متاح</strong>
+            </div>
+        </div>
+    </div>
+
+    <div class="layout">
+        <div class="panel">
+            <h3>الصفحة الرئيسية</h3>
+
+            <div class="actions-grid">
+                <button class="action-card" onclick="openPlansModal()"><span>🥈</span> الباقات</button>
+                <button class="action-card" onclick="openMyPlanModal()"><span>📦</span> باقتي</button>
+                <button class="action-card" onclick="openReferralModal()"><span>👥</span> دعوة صديق</button>
+                <button class="action-card" onclick="openDepositModal()"><span>➕</span> إيداع جديد</button>
+                <button class="action-card" onclick="openWithdrawModal()"><span>💸</span> سحب الأرباح</button>
+                <button class="action-card" onclick="openCapitalWithdrawModal()"><span>🏦</span> سحب رأس المال</button>
+                <button class="action-card" onclick="openVerificationModal()"><span>🪪</span> توثيق الحساب</button>
+                <button class="action-card" onclick="openTransactionsModal()"><span>📜</span> سجل العمليات</button>
+                <button class="action-card" onclick="openPasswordModal()"><span>🔐</span> تغيير كلمة المرور</button>
+                <button class="action-card" onclick="openSupportModal()"><span>📩</span> مراسلة الدعم</button>
+                <button class="action-card" onclick="openDeleteModal()"><span>🗑️</span> حذف حسابي</button>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h3>رسم توضيحي مالي</h3>
+            <div class="chart-box">
+                <canvas id="financeChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<div id="modal" class="modal hidden">
+    <div class="modal-box">
+        <div class="modal-head">
+            <h3 id="modalTitle">---</h3>
+            <button class="close-btn" onclick="closeModal()">إغلاق</button>
+        </div>
+
+        <div id="modalContent"></div>
+        <div id="modalMsg" class="msg"></div>
+    </div>
+</div>
+
+<script>
+let currentUser = null;
+let countdownTimer = null;
+let financeChart = null;
+
+function token() {
+    return localStorage.getItem("user_token");
+}
+
+function money(value) {
+    return Number(value || 0).toFixed(2) + "$";
+}
+
+function formatSeconds(seconds) {
+    if (seconds === null || seconds === undefined) return "غير متاح";
+
+    seconds = Math.max(0, Number(seconds));
+
+    const d = Math.floor(seconds / 86400);
+    const h = Math.floor((seconds % 86400) / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = Math.floor(seconds % 60);
+
+    return `${d} يوم، ${h} ساعة، ${m} دقيقة، ${s} ثانية`;
+}
+
+function formatTimestamp(ts) {
+    if (!ts) return "غير متاح";
+
+    const date = new Date(Number(ts) * 1000);
+
+    if (isNaN(date.getTime())) return "غير متاح";
+
+    return date.toLocaleString("ar", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit"
+    });
+}
+
+function setText(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.innerText = value;
+}
+
+function badgeStatus(status) {
+    if (status === "active") return `<span class="badge green">نشط</span>`;
+    if (status === "frozen") return `<span class="badge orange">مجمد</span>`;
+    if (status === "banned") return `<span class="badge red">محظور</span>`;
+    return `<span class="badge">${status || "---"}</span>`;
+}
+
+function showMsg(text, type = "") {
+    const box = document.getElementById("modalMsg");
+    box.className = "msg " + type;
+    box.innerText = text;
+}
+
+async function api(path, options = {}) {
+    const headers = options.headers || {};
+    headers["Authorization"] = "Bearer " + token();
+
+    if (!(options.body instanceof FormData)) {
+        headers["Content-Type"] = "application/json";
+    }
+
+    const res = await fetch(path, {
+        ...options,
+        headers
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+        throw new Error(data.detail || JSON.stringify(data));
+    }
+
+    return data;
+}
+
+async function loginUser() {
+    const username = document.getElementById("loginUsername").value.trim();
+    const password = document.getElementById("loginPassword").value.trim();
+
+    const msg = document.getElementById("loginMsg");
+    msg.innerText = "";
+
+    try {
+        const res = await fetch("/user-auth/login", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({username, password})
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+            msg.innerText = data.detail || "فشل تسجيل الدخول";
+            return;
+        }
+
+        localStorage.setItem("user_token", data.access_token);
+        await loadMe();
+
+    } catch (e) {
+        msg.innerText = "خطأ اتصال";
+    }
+}
+
+function logoutUser() {
+    localStorage.removeItem("user_token");
+    location.reload();
+}
+
+async function loadMe() {
+    try {
+        currentUser = await api("/user-panel/me");
+
+        document.getElementById("loginView").classList.add("hidden");
+        document.getElementById("appView").classList.remove("hidden");
+
+        renderUser();
+    } catch (e) {
+        localStorage.removeItem("user_token");
+        document.getElementById("loginView").classList.remove("hidden");
+        document.getElementById("appView").classList.add("hidden");
+    }
+}
+
+function renderUser() {
+    setText("topUsername", currentUser.username);
+    setText("heroName", currentUser.full_name || currentUser.username);
+    setText("telegramId", currentUser.telegram_id || "غير متاح");
+    setText("childrenCount", currentUser.children_count || 0);
+
+    document.getElementById("statusBadge").outerHTML = `<span id="statusBadge">${badgeStatus(currentUser.status)}</span>`;
+    document.getElementById("verifiedBadge").outerHTML =
+        `<span id="verifiedBadge" class="badge ${currentUser.verified ? "green" : "red"}">${currentUser.verified ? "موثق ✅" : "غير موثق ❌"}</span>`;
+    document.getElementById("planBadge").innerText = currentUser.plan || "NONE";
+
+    setText("balance", money(currentUser.balance));
+    setText("capital", money(currentUser.capital));
+    setText("profit", money(currentUser.profit_only));
+    setText("dailyProfit", money(currentUser.daily_profit));
+
+    setText("nextProfitTime", formatTimestamp(currentUser.next_profit_time));
+    setText("nextWithdrawTime", formatTimestamp(currentUser.next_withdraw_time));
+
+    startCountdowns(
+        currentUser.next_profit_seconds,
+        currentUser.withdraw_countdown_seconds
+    );
+
+    renderChart();
+}
+
+function startCountdowns(profitSeconds, withdrawSeconds) {
+    if (countdownTimer) clearInterval(countdownTimer);
+
+    let p = profitSeconds;
+    let w = withdrawSeconds;
+
+    function tick() {
+        setText("nextProfitCountdown", formatSeconds(p));
+        setText("withdrawCountdown", formatSeconds(w));
+
+        if (p !== null && p !== undefined && p > 0) p--;
+        if (w !== null && w !== undefined && w > 0) w--;
+    }
+
+    tick();
+    countdownTimer = setInterval(tick, 1000);
+}
+
+function renderChart() {
+    const ctx = document.getElementById("financeChart");
+
+    if (financeChart) financeChart.destroy();
+
+    financeChart = new Chart(ctx, {
+        type: "doughnut",
+        data: {
+            labels: ["رأس المال", "الأرباح"],
+            datasets: [{
+                data: [currentUser.capital || 0, currentUser.profit_only || 0],
+                backgroundColor: ["#2563eb", "#22c55e"]
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    labels: {color: "#fff"}
+                }
+            }
+        }
+    });
+}
+
+function openModal(title, html) {
+    document.getElementById("modalTitle").innerText = title;
+    document.getElementById("modalContent").innerHTML = html;
+    document.getElementById("modalMsg").innerText = "";
+    document.getElementById("modal").classList.remove("hidden");
+}
+
+function closeModal() {
+    document.getElementById("modal").classList.add("hidden");
+}
+
+function openPlansModal() {
+    openModal("الباقات", `
+        <div class="plans">
+            <div class="plan-card">
+                <h4>الباقة الفضية</h4>
+                <p>من 10$ إلى 100$</p>
+                <p>ربح 2% يومياً</p>
+                <p>السحب كل 30 يوم</p>
+                <button class="primary-btn" onclick="choosePlan('silver')">اختيار</button>
+            </div>
+
+            <div class="plan-card">
+                <h4>الباقة الذهبية</h4>
+                <p>من 101$ إلى 300$</p>
+                <p>ربح 2% يومياً</p>
+                <p>السحب كل 20 يوم</p>
+                <button class="primary-btn" onclick="choosePlan('gold')">اختيار</button>
+            </div>
+
+            <div class="plan-card">
+                <h4>باقة VIP</h4>
+                <p>من 301$ فما فوق</p>
+                <p>ربح 2% يومياً</p>
+                <p>السحب كل 10 أيام</p>
+                <button class="primary-btn" onclick="choosePlan('vip')">اختيار</button>
+            </div>
+        </div>
+    `);
+}
+
+function choosePlan(code) {
+    closeModal();
+    openDepositModal(code);
+}
+
+function openMyPlanModal() {
+    openModal("باقتي", `
+        <p>📦 الباقة الحالية: <b>${currentUser.plan}</b></p>
+        <p>💰 رأس المال: <b>${money(currentUser.capital)}</b></p>
+        <p>📈 الرصيد: <b>${money(currentUser.balance)}</b></p>
+        <p>💵 الأرباح: <b>${money(currentUser.profit_only)}</b></p>
+        <p>🪙 الربح اليومي: <b>${money(currentUser.daily_profit)}</b></p>
+        <p>📉 الحد الأدنى للسحب: <b>${money(currentUser.min_withdraw)}</b></p>
+        <p>💸 السحب القادم: <b>${formatTimestamp(currentUser.next_withdraw_time)}</b></p>
+        <p>⌛ عداد السحب: <b>${formatSeconds(currentUser.withdraw_countdown_seconds)}</b></p>
+    `);
+}
+
+function openReferralModal() {
+    openModal("دعوة صديق", `
+        <p>👥 عدد المدعوين: <b>${currentUser.children_count}</b></p>
+        <p>رابط دعوتك:</p>
+        <input value="${currentUser.referral_link}" readonly onclick="this.select()">
+        <button class="primary-btn" onclick="navigator.clipboard.writeText('${currentUser.referral_link}')">نسخ الرابط</button>
+        <br><br>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>المستخدمون المدعوون</th></tr></thead>
+                <tbody>
+                    ${(currentUser.children || []).map(x => `<tr><td>${x}</td></tr>`).join("") || `<tr><td>لا يوجد</td></tr>`}
+                </tbody>
+            </table>
+        </div>
+    `);
+}
+
+function openDepositModal(defaultPlan = "") {
+    openModal("إيداع جديد", `
+        <select id="depositPlan">
+            <option value="silver" ${defaultPlan === "silver" ? "selected" : ""}>الباقة الفضية</option>
+            <option value="gold" ${defaultPlan === "gold" ? "selected" : ""}>الباقة الذهبية</option>
+            <option value="vip" ${defaultPlan === "vip" ? "selected" : ""}>باقة VIP</option>
+        </select>
+
+        <input id="depositAmount" type="number" placeholder="المبلغ بالدولار">
+
+        <label>صورة إثبات الدفع</label>
+        <input id="depositProof" type="file" accept="image/*">
+
+        <button class="primary-btn" onclick="submitDeposit()">إرسال طلب الإيداع</button>
+    `);
+}
+
+async function fileToBase64(inputId) {
+    const input = document.getElementById(inputId);
+
+    if (!input || !input.files || !input.files[0]) return null;
+
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(input.files[0]);
+    });
+}
+
+async function submitDeposit() {
+    try {
+        const proof = await fileToBase64("depositProof");
+
+        await api("/user-panel/deposit-request", {
+            method: "POST",
+            body: JSON.stringify({
+                plan_code: document.getElementById("depositPlan").value,
+                amount: Number(document.getElementById("depositAmount").value),
+                proof_image_base64: proof
+            })
+        });
+
+        showMsg("تم إرسال طلب الإيداع بنجاح", "success");
+        await loadMe();
+
+    } catch (e) {
+        showMsg(e.message, "error");
+    }
+}
+
+function openWithdrawModal() {
+    openModal("سحب الأرباح", `
+        <p>الأرباح المتاحة: <b>${money(currentUser.profit_only)}</b></p>
+        <p>الحد الأدنى للسحب: <b>${money(currentUser.min_withdraw)}</b></p>
+
+        <input id="withdrawAmount" type="number" placeholder="المبلغ">
+        <input id="withdrawWallet" placeholder="عنوان المحفظة">
+        <input id="withdrawNetwork" placeholder="الشبكة">
+
+        <button class="primary-btn" onclick="submitWithdraw()">إرسال طلب السحب</button>
+    `);
+}
+
+async function submitWithdraw() {
+    try {
+        await api("/user-panel/withdraw-request", {
+            method: "POST",
+            body: JSON.stringify({
+                amount: Number(document.getElementById("withdrawAmount").value),
+                wallet_address: document.getElementById("withdrawWallet").value,
+                wallet_network: document.getElementById("withdrawNetwork").value
+            })
+        });
+
+        showMsg("تم إرسال طلب السحب بنجاح", "success");
+        await loadMe();
+
+    } catch (e) {
+        showMsg(e.message, "error");
+    }
+}
+
+function openCapitalWithdrawModal() {
+    openModal("سحب رأس المال وإيقاف الربح", `
+        <p>سيتم طلب سحب كامل الرصيد الحالي:</p>
+        <h2>${money(currentUser.balance)}</h2>
+
+        <input id="capitalWallet" placeholder="عنوان المحفظة">
+        <input id="capitalNetwork" placeholder="الشبكة">
+
+        <button class="danger-btn" onclick="submitCapitalWithdraw()">تأكيد طلب سحب رأس المال</button>
+    `);
+}
+
+async function submitCapitalWithdraw() {
+    try {
+        await api("/user-panel/capital-withdraw-request", {
+            method: "POST",
+            body: JSON.stringify({
+                wallet_address: document.getElementById("capitalWallet").value,
+                wallet_network: document.getElementById("capitalNetwork").value
+            })
+        });
+
+        showMsg("تم إرسال طلب سحب رأس المال", "success");
+        await loadMe();
+
+    } catch (e) {
+        showMsg(e.message, "error");
+    }
+}
+
+function openVerificationModal() {
+    openModal("توثيق الحساب", `
+        <input id="verifyName" placeholder="الاسم والكنية كما في الهوية">
+        <input id="verifyResidence" placeholder="مكان الإقامة">
+
+        <label>صورة الهوية الأمامية</label>
+        <input id="frontId" type="file" accept="image/*">
+
+        <label>صورة الهوية الخلفية</label>
+        <input id="backId" type="file" accept="image/*">
+
+        <button class="primary-btn" onclick="submitVerification()">إرسال طلب التوثيق</button>
+    `);
+}
+
+async function submitVerification() {
+    try {
+        const front = await fileToBase64("frontId");
+        const back = await fileToBase64("backId");
+
+        await api("/user-panel/verification-request", {
+            method: "POST",
+            body: JSON.stringify({
+                full_name: document.getElementById("verifyName").value,
+                residence: document.getElementById("verifyResidence").value,
+                front_image_base64: front,
+                back_image_base64: back
+            })
+        });
+
+        showMsg("تم إرسال طلب التوثيق بنجاح", "success");
+        await loadMe();
+
+    } catch (e) {
+        showMsg(e.message, "error");
+    }
+}
+
+function openTransactionsModal() {
+    openModal("سجل العمليات", `
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>النوع</th>
+                        <th>المبلغ</th>
+                        <th>الملاحظة</th>
+                        <th>الوقت</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${(currentUser.transactions || []).slice().reverse().map(tx => `
+                        <tr>
+                            <td>${tx.type || "---"}</td>
+                            <td>${money(tx.amount || 0)}</td>
+                            <td>${tx.note || "---"}</td>
+                            <td>${tx.time || "---"}</td>
+                        </tr>
+                    `).join("") || `<tr><td colspan="4">لا توجد عمليات</td></tr>`}
+                </tbody>
+            </table>
+        </div>
+    `);
+}
+
+function openPasswordModal() {
+    openModal("تغيير كلمة المرور", `
+        <input id="oldPassword" type="password" placeholder="كلمة المرور الحالية">
+        <input id="newPassword" type="password" placeholder="كلمة المرور الجديدة">
+        <button class="primary-btn" onclick="submitPassword()">تغيير كلمة المرور</button>
+    `);
+}
+
+async function submitPassword() {
+    try {
+        await api("/user-panel/change-password", {
+            method: "POST",
+            body: JSON.stringify({
+                old_password: document.getElementById("oldPassword").value,
+                new_password: document.getElementById("newPassword").value
+            })
+        });
+
+        showMsg("تم تغيير كلمة المرور بنجاح", "success");
+
+    } catch (e) {
+        showMsg(e.message, "error");
+    }
+}
+
+function openSupportModal() {
+    openModal("مراسلة الدعم", `
+        <textarea id="supportMessage" rows="6" placeholder="اكتب رسالتك هنا"></textarea>
+        <button class="primary-btn" onclick="submitSupport()">إرسال الرسالة</button>
+    `);
+}
+
+async function submitSupport() {
+    try {
+        await api("/user-panel/support", {
+            method: "POST",
+            body: JSON.stringify({
+                message: document.getElementById("supportMessage").value
+            })
+        });
+
+        showMsg("تم إرسال الرسالة إلى الدعم", "success");
+
+    } catch (e) {
+        showMsg(e.message, "error");
+    }
+}
+
+function openDeleteModal() {
+    openModal("حذف الحساب", `
+        <p style="color:#fecaca;">تحذير: سيتم حذف حسابك وبياناتك نهائيًا.</p>
+        <input id="deletePassword" type="password" placeholder="كلمة المرور">
+        <input id="deleteConfirm" placeholder="اكتب DELETE للتأكيد">
+        <button class="danger-btn" onclick="submitDelete()">حذف الحساب نهائيًا</button>
+    `);
+}
+
+async function submitDelete() {
+    try {
+        await api("/user-panel/delete-account", {
+            method: "POST",
+            body: JSON.stringify({
+                password: document.getElementById("deletePassword").value,
+                confirm_text: document.getElementById("deleteConfirm").value
+            })
+        });
+
+        alert("تم حذف الحساب");
+        logoutUser();
+
+    } catch (e) {
+        showMsg(e.message, "error");
+    }
+}
+
+window.onload = async function () {
+    if (token()) {
+        await loadMe();
+    }
+};
+</script>
+
+</body>
+</html>

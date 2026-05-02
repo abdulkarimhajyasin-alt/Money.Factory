@@ -7,6 +7,8 @@ from web_dashboard.routers.auth_router import router as auth_router
 from web_dashboard.routers.users_router import router as users_router
 from web_dashboard.routers.dashboard_router import router as dashboard_router
 from web_dashboard.routers.financial_router import router as financial_router
+from web_dashboard.routers.user_auth_router import router as user_auth_router
+from web_dashboard.routers.user_panel_router import router as user_panel_router
 
 app = FastAPI(
     title="Money Factory Web Dashboard",
@@ -38,6 +40,14 @@ def dashboard_page(request: Request):
         context={}
     )
 
+@app.get("/user", response_class=HTMLResponse)
+def user_dashboard_page(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="user_dashboard.html",
+        context={}
+    )
+
 
 # =========================
 # API Routers
@@ -64,4 +74,16 @@ app.include_router(
     financial_router,
     prefix="/financial",
     tags=["Financial"]
+)
+
+app.include_router(
+    user_auth_router,
+    prefix="/user-auth",
+    tags=["User Auth"]
+)
+
+app.include_router(
+    user_panel_router,
+    prefix="/user-panel",
+    tags=["User Panel"]
 )

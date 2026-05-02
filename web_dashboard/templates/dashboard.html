@@ -1521,6 +1521,24 @@ async function loadUsers() {
 
 async function loadChildren(username, level = 1, parentRow = null) {
 
+    const existingRows = document.querySelectorAll(`tr[data-parent="${username}"]`);
+
+    if (existingRows.length > 0) {
+        existingRows.forEach(row => row.remove());
+
+        if (parentRow) {
+            const btn = parentRow.querySelector("td:last-child button");
+            if (btn) btn.innerText = "View";
+        }
+
+        return;
+    }
+
+    if (parentRow) {
+        const btn = parentRow.querySelector("td:last-child button");
+        if (btn) btn.innerText = "Hide";
+    }
+
     const res = await fetch("/users/children/" + encodeURIComponent(username), {
         headers: {
             "Authorization": "Bearer " + localStorage.getItem("token")
@@ -1534,7 +1552,6 @@ async function loadChildren(username, level = 1, parentRow = null) {
         return;
     }
 
-    document.querySelectorAll(`tr[data-parent="${username}"]`).forEach(row => row.remove());
 
     const children = result.children || [];
 
