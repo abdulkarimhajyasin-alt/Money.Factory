@@ -394,6 +394,11 @@ def send_support_message(
     capital = get_capital(data, username)
     profit = get_profit_only(data, username)
 
+    # مهم: نفس مفتاح نظام الدعم في البوت
+    support_waiting_reply = data.get("support_waiting_reply", {})
+    support_waiting_reply[username] = True
+    data["support_waiting_reply"] = support_waiting_reply
+
     support_messages = data.get("web_support_messages", [])
 
     support_messages.append({
@@ -407,6 +412,7 @@ def send_support_message(
         "profit_only": profit,
         "message": message,
         "status": "sent_to_admin",
+        "source": "web_user_dashboard",
         "time": now_str()
     })
 
@@ -415,13 +421,14 @@ def send_support_message(
     add_transaction(
         data,
         username,
-        "web_support_message",
+        "support_message_sent",
         0,
-        f"أرسل المستخدم رسالة دعم من الويب: {message[:80]}"
+        f"أرسل المستخدم رسالة دعم من لوحة الويب: {message[:80]}"
     )
 
     admin_text = (
-        "📩 <b>رسالة دعم جديدة من لوحة المستخدم Web</b>\n\n"
+        "📩 <b>رسالة دعم جديدة</b>\n\n"
+        "🌐 <b>المصدر:</b> لوحة المستخدم Web\n"
         f"👤 <b>Username:</b> {username}\n"
         f"🧾 <b>الاسم:</b> {full_name}\n"
         f"🌍 <b>الدولة:</b> {residence}\n"
@@ -430,7 +437,9 @@ def send_support_message(
         f"💰 <b>الرصيد:</b> {balance}$\n"
         f"🏦 <b>رأس المال:</b> {capital}$\n"
         f"📈 <b>الأرباح:</b> {profit}$\n\n"
-        f"💬 <b>الرسالة:</b>\n{message}"
+        f"💬 <b>رسالة المستخدم:</b>\n{message}\n\n"
+        "↩️ <b>للرد:</b>\n"
+        "افتح البوت كأدمن واستخدم نفس نظام الرد على الدعم الموجود لديك."
     )
 
     sent = send_telegram_message(ADMIN_ID, admin_text)
