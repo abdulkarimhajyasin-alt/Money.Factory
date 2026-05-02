@@ -3609,6 +3609,20 @@ async def go_back_from_data_entry_state(user_id, context):
 # =========================
 # معالجة الرسائل
 # =========================
+def add_support_reply_to_web_chat(username, message):
+    data = db_get("data", {})
+
+    support_chat_messages = data.get("support_chat_messages", {})
+    support_chat_messages.setdefault(username, []).append({
+        "sender": "support",
+        "message": message,
+        "time": now_str(),
+        "read": False
+    })
+
+    data["support_chat_messages"] = support_chat_messages
+    db_set("data", data)
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     global support_employees_enabled
@@ -4882,6 +4896,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"{reply_text}"
                 )
             )
+            add_support_reply_to_web_chat(username, reply_text)
 
             add_message_to_batch(batch_id, target_user_id, sent_msg.message_id)
 

@@ -249,6 +249,9 @@ class ChangePasswordRequest(BaseModel):
 class SupportRequest(BaseModel):
     message: str
 
+class EmptyRequest(BaseModel):
+    pass    
+
 
 class DepositRequest(BaseModel):
     plan_code: str
@@ -382,6 +385,47 @@ def get_support_messages(username: str = Depends(get_current_user)):
 
     return {
         "messages": messages[-50:]
+    }
+
+@router.get("/support-messages")
+def get_support_messages(username: str = Depends(get_current_user)):
+    users, data = load_storage()
+
+    support_chat_messages = data.get("support_chat_messages", {})
+    messages = support_chat_messages.get(username, [])
+
+    unread_count = sum(
+        1 for msg in messages
+        if msg.get("sender") == "support" and not msg.get("read", False)
+    )
+
+    return {
+        "messages": messages[-50:],
+        "unread_count": unread_count
+    }
+
+
+@router.post("/support-mark-read")
+def mark_support_messages_read(
+    request: EmptyRequest,
+    username: str = Depends(get_current_user)
+):
+    users, data = load_storage()
+
+    support_chat_messages = data.get("support_chat_messages", {})
+    messages = support_chat_messages.get(username, [])
+
+    for msg in messages:
+        if msg.get("sender") == "support":
+            msg["read"] = True
+
+    support_chat_messages[username] = messages
+    data["support_chat_messages"] = support_chat_messages
+
+    save_data(data)
+
+    return {
+        "success": True
     }
 
 
