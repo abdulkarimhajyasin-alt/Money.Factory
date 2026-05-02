@@ -344,6 +344,31 @@
                 font-size: 22px;
             }
         }
+
+        .secondary-btn {
+            width: 100%;
+            background: rgba(255,255,255,0.12);
+            color: white;
+            margin-top: 10px;
+            border: 1px solid rgba(255,255,255,0.18);
+        }
+
+        .secondary-btn:hover {
+            background: rgba(37,99,235,0.45);
+        }
+
+        .terms-box {
+            background: rgba(15,23,42,0.88);
+            border: 1px solid rgba(255,255,255,0.14);
+            border-radius: 18px;
+            padding: 14px;
+            max-height: 310px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            line-height: 1.8;
+            color: #e5e7eb;
+            font-size: 14px;
+        }
     </style>
 </head>
 
@@ -357,6 +382,7 @@
     <input id="loginPassword" type="password" placeholder="كلمة المرور">
 
     <button class="primary-btn" onclick="loginUser()">دخول</button>
+    <button class="secondary-btn" onclick="openRegisterModal()">إنشاء حساب جديد</button>
 
     <div id="loginMsg" class="msg"></div>
 </div>
@@ -365,7 +391,7 @@
 
     <div class="topbar">
         <div class="brand">
-            <h1>لوحة المستخدم</h1>
+            <h1>Money Factory</h1>
             <span>تابع أرباحك، باقتك، السحب، الإيداع، والتوثيق من مكان واحد</span>
         </div>
 
@@ -590,6 +616,73 @@ async function loginUser() {
     }
 }
 
+async function openRegisterModal() {
+    try {
+        const res = await fetch("/user-auth/terms");
+        const data = await res.json();
+
+        openModal("إنشاء حساب جديد", `
+            <div class="terms-box">${data.terms || "شروط الاستخدام غير متاحة"}</div>
+
+            <br>
+
+            <label style="display:flex;gap:8px;align-items:center;cursor:pointer;">
+                <input id="acceptTerms" type="checkbox" style="width:auto;">
+                <span>أوافق على شروط الاستخدام</span>
+            </label>
+
+            <input id="registerUsername" placeholder="اسم المستخدم">
+            <input id="registerPassword" type="password" placeholder="كلمة المرور">
+            <input id="registerFullName" placeholder="الاسم والكنية">
+            <input id="registerResidence" placeholder="الدولة / مكان الإقامة">
+
+            <button class="primary-btn" onclick="submitRegister()">إنشاء الحساب</button>
+        `);
+
+    } catch (e) {
+        alert("تعذر تحميل شروط الاستخدام");
+    }
+}
+
+
+async function submitRegister() {
+    const accepted = document.getElementById("acceptTerms").checked;
+
+    if (!accepted) {
+        showMsg("يجب الموافقة على شروط الاستخدام أولًا", "error");
+        return;
+    }
+
+    try {
+        const res = await fetch("/user-auth/register", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({
+                username: document.getElementById("registerUsername").value.trim(),
+                password: document.getElementById("registerPassword").value.trim(),
+                full_name: document.getElementById("registerFullName").value.trim(),
+                residence: document.getElementById("registerResidence").value.trim(),
+                accepted_terms: accepted
+            })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+            showMsg(data.detail || "فشل إنشاء الحساب", "error");
+            return;
+        }
+
+        localStorage.setItem("user_token", data.access_token);
+
+        closeModal();
+        await loadMe();
+
+    } catch (e) {
+        showMsg("خطأ اتصال أثناء إنشاء الحساب", "error");
+    }
+}
+
 function logoutUser() {
     localStorage.removeItem("user_token");
     location.reload();
@@ -735,8 +828,7 @@ function openMyPlanModal() {
         <p>💵 الأرباح: <b>${money(currentUser.profit_only)}</b></p>
         <p>🪙 الربح اليومي: <b>${money(currentUser.daily_profit)}</b></p>
         <p>📉 الحد الأدنى للسحب: <b>${money(currentUser.min_withdraw)}</b></p>
-        <p>💸 السحب القادم: <b>${formatTimestamp(currentUser.next_withdraw_time)}</b></p>
-        <p>⌛ عداد السحب: <b>${formatSeconds(currentUser.withdraw_countdown_seconds)}</b></p>
+        
     `);
 }
 
@@ -760,11 +852,7 @@ function openReferralModal() {
 
 function openDepositModal(defaultPlan = "") {
     openModal("إيداع جديد", `
-        <select id="depositPlan">
-            <option value="silver" ${defaultPlan === "silver" ? "selected" : ""}>الباقة الفضية</option>
-            <option value="gold" ${defaultPlan === "gold" ? "selected" : ""}>الباقة الذهبية</option>
-            <option value="vip" ${defaultPlan === "vip" ? "selected" : ""}>باقة VIP</option>
-        </select>
+        
 
         <input id="depositAmount" type="number" placeholder="المبلغ بالدولار">
 
@@ -873,13 +961,13 @@ async function submitCapitalWithdraw() {
 
 function openVerificationModal() {
     openModal("توثيق الحساب", `
-        <input id="verifyName" placeholder="الاسم والكنية كما في الهوية">
+        <input id="verifyName" placeholder="الاسم والكنية كما في البطاقة">
         <input id="verifyResidence" placeholder="مكان الإقامة">
 
-        <label>صورة الهوية الأمامية</label>
+        <label>صورة البطاقة الأمامية</label>
         <input id="frontId" type="file" accept="image/*">
 
-        <label>صورة الهوية الخلفية</label>
+        <label>صورة البطاقة الخلفية</label>
         <input id="backId" type="file" accept="image/*">
 
         <button class="primary-btn" onclick="submitVerification()">إرسال طلب التوثيق</button>
