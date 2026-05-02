@@ -417,6 +417,95 @@
     font-size: 12px;
     color: #cbd5e1;
 }
+
+.support-chat-box {
+    margin-top: 18px;
+    background: rgba(15,23,42,0.92);
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 24px;
+    padding: 14px;
+}
+
+.support-chat-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.support-chat-header small {
+    display: block;
+    color: #94a3b8;
+    margin-top: 4px;
+    font-size: 12px;
+}
+
+.support-chat-header button {
+    background: #334155;
+    color: white;
+    padding: 8px 12px;
+}
+
+.support-messages-list {
+    height: 230px;
+    overflow-y: auto;
+    background: rgba(2,6,23,0.55);
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 18px;
+    padding: 12px;
+}
+
+.support-message {
+    max-width: 82%;
+    padding: 10px 12px;
+    border-radius: 16px;
+    margin-bottom: 10px;
+    line-height: 1.7;
+    word-break: break-word;
+}
+
+.support-message.user {
+    margin-right: auto;
+    background: linear-gradient(135deg, #2563eb, #06b6d4);
+    color: white;
+}
+
+.support-message.support {
+    margin-left: auto;
+    background: rgba(255,255,255,0.12);
+    color: #f8fafc;
+}
+
+.support-message-time {
+    display: block;
+    margin-top: 5px;
+    font-size: 11px;
+    color: #cbd5e1;
+}
+
+.support-empty {
+    text-align: center;
+    color: #94a3b8;
+    margin-top: 80px;
+}
+
+.support-input-row {
+    display: flex;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.support-input-row textarea {
+    margin: 0;
+    resize: none;
+}
+
+.support-input-row button {
+    background: linear-gradient(135deg, #2563eb, #06b6d4);
+    color: white;
+    min-width: 90px;
+}
     </style>
 </head>
 
@@ -549,6 +638,27 @@
             <span>موعد السحب</span>
         </div>
     </div>
+</div>
+<div id="supportChatBox" class="support-chat-box hidden">
+
+    <div class="support-chat-header">
+        <div>
+            <strong>📩 رسائل الدعم</strong>
+            <small>المحادثة بينك وبين الدعم</small>
+        </div>
+
+        <button onclick="hideSupportChatBox()">إخفاء</button>
+    </div>
+
+    <div id="supportMessagesList" class="support-messages-list">
+        <div class="support-empty">لا توجد رسائل حتى الآن</div>
+    </div>
+
+    <div class="support-input-row">
+        <textarea id="inlineSupportMessage" rows="2" placeholder="اكتب رسالتك هنا..."></textarea>
+        <button onclick="submitInlineSupport()">إرسال</button>
+    </div>
+
 </div>
     </div>
 
@@ -756,6 +866,9 @@ async function loadMe() {
         document.getElementById("appView").classList.remove("hidden");
 
         renderUser();
+
+await loadSupportMessages();
+startSupportPolling();
     } catch (e) {
         localStorage.removeItem("user_token");
         document.getElementById("loginView").classList.remove("hidden");
@@ -1149,11 +1262,9 @@ async function submitPassword() {
     }
 }
 
-function openSupportModal() {
-    openModal("مراسلة الدعم", `
-        <textarea id="supportMessage" rows="6" placeholder="اكتب رسالتك هنا"></textarea>
-        <button class="primary-btn" onclick="submitSupport()">إرسال الرسالة</button>
-    `);
+async function openSupportModal() {
+    showSupportChatBox();
+    await loadSupportMessages();
 }
 
 async function submitSupport() {
@@ -1170,6 +1281,88 @@ async function submitSupport() {
     } catch (e) {
         showMsg(e.message, "error");
     }
+}
+
+let supportPollingTimer = null;
+
+function showSupportChatBox() {
+    const box = document.getElementById("supportChatBox");
+    if (box) box.classList.remove("hidden");
+}
+
+function hideSupportChatBox() {
+    const box = document.getElementById("supportChatBox");
+    if (box) box.classList.add("hidden");
+}
+
+function escapeHtml(value) {
+    return String(value || "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+}
+
+async function loadSupportMessages() {
+    try {
+        const data = await api("/user-panel/support-messages");
+        const messages = data.messages || [];
+        const list = document.getElementById("supportMessagesList");
+
+        if (!list) return;
+
+        if (!messages.length) {
+            list.innerHTML = `<div class="support-empty">لا توجد رسائل حتى الآن</div>`;
+            return;
+        }
+
+        list.innerHTML = messages.map(msg => `
+            <div class="support-message ${msg.sender === "support" ? "support" : "user"}">
+                ${escapeHtml(msg.message)}
+                <span class="support-message-time">${escapeHtml(msg.time || "")}</span>
+            </div>
+        `).join("");
+
+        list.scrollTop = list.scrollHeight;
+
+        if (messages.some(m => m.sender === "support")) {
+            showSupportChatBox();
+        }
+
+    } catch (e) {
+        console.log("تعذر تحميل رسائل الدعم:", e.message);
+    }
+}
+
+async function submitInlineSupport() {
+    const input = document.getElementById("inlineSupportMessage");
+    const message = input.value.trim();
+
+    if (!message) return;
+
+    try {
+        await api("/user-panel/support", {
+            method: "POST",
+            body: JSON.stringify({ message })
+        });
+
+        input.value = "";
+        await loadSupportMessages();
+
+    } catch (e) {
+        alert(e.message);
+    }
+}
+
+function startSupportPolling() {
+    if (supportPollingTimer) clearInterval(supportPollingTimer);
+
+    supportPollingTimer = setInterval(async () => {
+        if (token()) {
+            await loadSupportMessages();
+        }
+    }, 5000);
 }
 
 function openDeleteModal() {

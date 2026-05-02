@@ -373,6 +373,17 @@ def change_password(
         "message": "Password changed successfully"
     }
 
+@router.get("/support-messages")
+def get_support_messages(username: str = Depends(get_current_user)):
+    users, data = load_storage()
+
+    support_chat_messages = data.get("support_chat_messages", {})
+    messages = support_chat_messages.get(username, [])
+
+    return {
+        "messages": messages[-50:]
+    }
+
 
 @router.post("/support")
 def send_support_message(
@@ -400,6 +411,14 @@ def send_support_message(
     data["support_waiting_reply"] = support_waiting_reply
 
     support_messages = data.get("web_support_messages", [])
+    support_chat_messages = data.get("support_chat_messages", {})
+    support_chat_messages.setdefault(username, []).append({
+    "sender": "user",
+    "message": message,
+    "time": now_str(),
+    "read": True
+     })
+    data["support_chat_messages"] = support_chat_messages
 
     support_messages.append({
         "username": username,
