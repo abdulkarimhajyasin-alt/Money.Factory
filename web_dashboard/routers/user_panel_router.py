@@ -1,6 +1,8 @@
 import json
 import time
+import requests
 from datetime import datetime
+from web_dashboard.config import BOT_TOKEN
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -11,7 +13,7 @@ from web_dashboard.services.storage_service import web_db_get as db_get
 
 
 router = APIRouter()
-
+ADMIN_ID = 5685737658
 
 PLANS = {
     "الباقة الفضية": {
@@ -53,6 +55,29 @@ PLAN_CODE_MAP = {
 
 def now_str():
     return time.strftime("%Y-%m-%d %H:%M:%S")
+
+def send_telegram_message(chat_id: int, text: str):
+    if not BOT_TOKEN:
+        return False
+
+    try:
+        response = requests.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+            json={
+                "chat_id": chat_id,
+                "text": text,
+                "parse_mode": "HTML"
+            },
+            timeout=10
+        )
+
+        result = response.json()
+
+        return bool(result.get("ok"))
+
+    except Exception as e:
+        print(f"[TELEGRAM_SEND_ERROR] {e}")
+        return False
 
 
 def db_set(key, value):
@@ -361,13 +386,27 @@ def send_support_message(
     if not message:
         raise HTTPException(status_code=400, detail="Message is empty")
 
+    telegram_id = get_telegram_id(data, username)
+    full_name = data.get("user_full_name", {}).get(username, "غير متوفر")
+    residence = data.get("user_residence", {}).get(username, "غير متوفر")
+    plan = data.get("user_plans", {}).get(username, "NONE")
+    balance = get_balance(data, username)
+    capital = get_capital(data, username)
+    profit = get_profit_only(data, username)
+
     support_messages = data.get("web_support_messages", [])
 
     support_messages.append({
         "username": username,
-        "telegram_id": get_telegram_id(data, username),
+        "telegram_id": telegram_id,
+        "full_name": full_name,
+        "residence": residence,
+        "plan": plan,
+        "balance": balance,
+        "capital": capital,
+        "profit_only": profit,
         "message": message,
-        "status": "pending",
+        "status": "sent_to_admin",
         "time": now_str()
     })
 
@@ -381,11 +420,31 @@ def send_support_message(
         f"أرسل المستخدم رسالة دعم من الويب: {message[:80]}"
     )
 
+    admin_text = (
+        "📩 <b>رسالة دعم جديدة من لوحة المستخدم Web</b>\n\n"
+        f"👤 <b>Username:</b> {username}\n"
+        f"🧾 <b>الاسم:</b> {full_name}\n"
+        f"🌍 <b>الدولة:</b> {residence}\n"
+        f"🆔 <b>Telegram ID:</b> {telegram_id or 'غير متاح'}\n"
+        f"📦 <b>الباقة:</b> {plan}\n"
+        f"💰 <b>الرصيد:</b> {balance}$\n"
+        f"🏦 <b>رأس المال:</b> {capital}$\n"
+        f"📈 <b>الأرباح:</b> {profit}$\n\n"
+        f"💬 <b>الرسالة:</b>\n{message}"
+    )
+
+    sent = send_telegram_message(ADMIN_ID, admin_text)
+
+    if not sent:
+        support_messages[-1]["status"] = "saved_but_telegram_failed"
+        data["web_support_messages"] = support_messages
+
     save_data(data)
 
     return {
         "success": True,
-        "message": "Support message sent successfully"
+        "message": "Support message sent successfully" if sent else "Support message saved, but Telegram send failed",
+        "telegram_sent": sent
     }
 
 
