@@ -989,3 +989,156 @@ def admin_support_reply(
         "success": True,
         "telegram_sent": telegram_sent
     }
+
+def send_telegram_message(chat_id: int, text: str):
+    if not BOT_TOKEN or not chat_id:
+        return False
+
+    try:
+        response = requests.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+            json={
+                "chat_id": int(chat_id),
+                "text": text
+            },
+            timeout=10
+        )
+
+        result = response.json()
+        return bool(result.get("ok"))
+
+    except Exception as e:
+        print(f"[DELETE_USER_TELEGRAM_NOTIFY_ERROR] {e}")
+        return False    
+
+@router.delete("/delete-user/{username}")
+def delete_user(
+    username: str,
+    admin: str = Depends(get_current_admin)
+):
+    users, data = load_storage()
+    target_user_id = data.get("user_telegram_ids", {}).get(username)
+
+    if username not in users:
+        raise HTTPException(status_code=404, detail="المستخدم غير موجود")
+
+    # --- جمع البيانات قبل الحذف (نفس البوت) ---
+    telegram_id = data.get("user_telegram_ids", {}).get(username)
+
+    entry = {
+        "username": username,
+        "telegram_id": telegram_id,
+        "telegram_first_name": data.get("user_full_name", {}).get(username),
+        "telegram_username": username,
+        "full_name": data.get("user_full_name", {}).get(username),
+        "residence": data.get("user_residence", {}).get(username),
+        "verification_text": "موثق" if data.get("verified_users", {}).get(username) else "غير موثق",
+        "status_before_delete": data.get("user_status", {}).get(username),
+        "plan_before_delete": data.get("user_plans", {}).get(username),
+        "capital_before_delete": data.get("user_deposits", {}).get(username, 0),
+        "balance_before_delete": data.get("user_balance", {}).get(username, 0),
+        "profit_only_before_delete": (
+            float(data.get("user_balance", {}).get(username, 0)) -
+            float(data.get("user_deposits", {}).get(username, 0))
+        ),
+        "deleted_at": now_str(),
+        "pending_requests_summary": "تم الحذف من الداشبورد"
+    }
+
+    # --- إضافة للسجل (نفس البوت) ---
+    deleted_accounts_log = data.get("deleted_accounts_log", [])
+    deleted_accounts_log.append(entry)
+
+    if len(deleted_accounts_log) > 1000:
+        deleted_accounts_log = deleted_accounts_log[-1000:]
+
+    data["deleted_accounts_log"] = deleted_accounts_log
+
+    full_name = data.get("user_full_name", {}).get(username, "غير متوفر")
+    residence = data.get("user_residence", {}).get(username, "غير متوفر")
+    plan = data.get("user_plans", {}).get(username, "NONE")
+    balance = round(float(data.get("user_balance", {}).get(username, 0)), 2)
+    capital = round(float(data.get("user_deposits", {}).get(username, 0)), 2)
+
+    profit_only = balance - capital
+    if profit_only < 0:
+        profit_only = 0
+
+    verification_text = "موثق ✅" if data.get("verified_users", {}).get(username) else "غير موثق ❌"
+    status_text = data.get("user_status", {}).get(username, "غير معروف")
+
+    # مبدئياً بدون طلبات معلقة (نضيفها لاحقاً إذا أردت ربطها مع البوت)
+    pending_requests_summary = "تم الحذف من الداشبورد"
+
+    deleted_account_entry = {
+        "username": username,
+        "telegram_id": target_user_id if target_user_id else "غير متوفر",
+        "telegram_first_name": "غير متوفر",
+        "telegram_username": "لا يوجد",
+        "full_name": full_name,
+        "residence": residence,
+        "verification_text": verification_text,
+        "status_before_delete": status_text,
+        "plan_before_delete": plan,
+        "capital_before_delete": capital,
+        "balance_before_delete": balance,
+        "profit_only_before_delete": profit_only,
+        "pending_requests_summary": pending_requests_summary,
+        "deleted_at": now_str()
+         }
+
+    # --- حذف المستخدم (نسخة مبسطة من البوت) ---
+    users.pop(username, None)
+
+    for key in [
+        "user_balance", "user_deposits", "user_plans", "user_status",
+        "user_telegram_ids", "user_full_name", "user_residence",
+        "user_last_profit", "user_withdraw_logs", "user_deposit_logs",
+        "verified_users", "user_referrer", "referral_bonus_paid",
+        "support_waiting_reply", "user_wallet_address", "user_wallet_network"
+    ]:
+        data.get(key, {}).pop(username, None)
+
+    # --- حفظ ---
+    db_set("users", users)
+    save_data(data)
+    # إرسال إشعار للمستخدم
+    if target_user_id and str(target_user_id).isdigit():
+        send_telegram_message(
+           int(target_user_id),
+           "❌ تم حذف حسابك نهائيًا بواسطة الإدارة"
+      )
+    # إرسال إشعار للأدمن
+    admin_notify_text = (
+    f"🗑 تم حذف مستخدم من داشبورد الويب\n\n"
+    f"👤 اسم المستخدم: {deleted_account_entry.get('username', 'غير متوفر')}\n"
+    f"🆔 Telegram ID: {deleted_account_entry.get('telegram_id', 'غير متوفر')}\n"
+    f"👤 الاسم والكنية: {deleted_account_entry.get('full_name', 'غير متوفر')}\n"
+    f"🏠 مكان الإقامة: {deleted_account_entry.get('residence', 'غير متوفر')}\n"
+    f"🪪 التوثيق: {deleted_account_entry.get('verification_text', 'غير متوفر')}\n"
+    f"📌 الحالة قبل الحذف: {deleted_account_entry.get('status_before_delete', 'غير متوفر')}\n"
+    f"📦 الباقة قبل الحذف: {deleted_account_entry.get('plan_before_delete', 'غير متوفر')}\n"
+    f"💰 رأس المال قبل الحذف: {deleted_account_entry.get('capital_before_delete', 0)}$\n"
+    f"📈 الرصيد قبل الحذف: {deleted_account_entry.get('balance_before_delete', 0)}$\n"
+    f"💵 الأرباح فقط قبل الحذف: {deleted_account_entry.get('profit_only_before_delete', 0)}$\n"
+    f"🕒 وقت الحذف: {deleted_account_entry.get('deleted_at', 'غير متوفر')}\n\n"
+    f"📋 الطلبات المعلقة وقت الحذف:\n"
+    f"{deleted_account_entry.get('pending_requests_summary', 'غير متوفر')}"
+        )
+
+    send_telegram_message(ADMIN_ID, admin_notify_text)    
+
+    return {
+        "success": True,
+        "message": f"تم حذف المستخدم {username}"
+    }
+
+@router.get("/deleted-accounts")
+def get_deleted_accounts(admin: str = Depends(get_current_admin)):
+    users, data = load_storage()
+
+    logs = data.get("deleted_accounts_log", [])
+
+    return {
+        "logs": logs[::-1]  # أحدث أولاً
+    }

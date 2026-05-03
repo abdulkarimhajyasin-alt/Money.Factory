@@ -1795,12 +1795,35 @@ function botStatusModal() {
     `);
 }
 
-function openDeletedAccountsModal() {
-    openModal("🗑️ سجل الحسابات المحذوفة", `
-        <p>هذا الزر ظاهر الآن مثل لوحة تيليغرام.</p>
-        <p>لتفعيله نحتاج Endpoint يعيد:</p>
-        <code>deleted_accounts_log</code>
-    `);
+async function deletedAccountsModal() {
+    openModal("🗑️ سجل الحسابات المحذوفة", `<div id="deletedAccountsBox">جار التحميل...</div>`);
+
+    try {
+        const data = await api("/users/deleted-accounts");
+
+        const logs = data.logs || [];
+
+        if (!logs.length) {
+            document.getElementById("deletedAccountsBox").innerHTML =
+                "<div class='msg'>لا يوجد حسابات محذوفة</div>";
+            return;
+        }
+
+        document.getElementById("deletedAccountsBox").innerHTML = logs.map(item => `
+            <div class="card">
+                <strong>👤 ${item.username}</strong><br>
+                🆔 ${item.telegram_id || "-"}<br>
+                💰 الرصيد: ${item.balance_before_delete}$<br>
+                📥 رأس المال: ${item.capital_before_delete}$<br>
+                📦 الباقة: ${item.plan_before_delete}<br>
+                🕒 ${item.deleted_at}
+            </div>
+        `).join("");
+
+    } catch (e) {
+        document.getElementById("deletedAccountsBox").innerHTML =
+            `<div class="msg error">${e.message}</div>`;
+    }
 }
 
 function broadcastModal() {
@@ -1867,10 +1890,35 @@ function searchUserModal() {
 
 function deleteUserModal() {
     openModal("🗑️ حذف مستخدم", `
-        <p style="color:#fecaca;">تحذير: حذف المستخدم بالكامل يحتاج API خاص غير موجود في النسخة الحالية.</p>
+        <p style="color:#fecaca;">تحذير: سيتم حذف المستخدم بالكامل من النظام.</p>
         <input id="deleteUsernameInput" placeholder="Username">
-        <button class="btn-red" onclick="alert('يحتاج Backend API لحذف المستخدم بالكامل')">حذف</button>
+        <button class="btn-red" onclick="confirmDeleteUser()">حذف</button>
     `);
+}
+
+async function confirmDeleteUser() {
+    const username = document.getElementById("deleteUsernameInput").value.trim();
+
+    if (!username) {
+        alert("اكتب اسم المستخدم");
+        return;
+    }
+
+    if (!confirm("هل أنت متأكد من حذف المستخدم نهائياً؟")) return;
+    if (!confirm("تأكيد أخير: سيتم حذف بيانات المستخدم بالكامل.")) return;
+
+    try {
+        await api("/users/delete-user/" + encodeURIComponent(username), {
+            method: "DELETE"
+        });
+
+        alert("تم حذف المستخدم بنجاح");
+        closeModal();
+        await refreshAll();
+
+    } catch (e) {
+        alert(e.message);
+    }
 }
 
 async function toggleSubscriptions() {
