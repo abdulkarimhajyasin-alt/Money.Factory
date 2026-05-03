@@ -518,6 +518,7 @@
                     <span class="badge blue">Admin</span>
                     <span class="badge green">Live</span>
                     <span id="subscriptionStatusBadge" class="badge">الاشتراك: ---</span>
+                    <span id="botMaintenanceBadge" class="badge">البوت: ---</span>
                 </div>
             </div>
 
@@ -549,10 +550,6 @@
 
     <button class="action-card" onclick="toggleBotMaintenance()">
         <span>⏯️</span>إيقاف/تشغيل البوت
-    </button>
-
-    <button class="action-card" onclick="botStatusModal()">
-        <span>🛠️</span>حالة البوت
     </button>
 
     <button class="action-card" onclick="broadcastModal()">
@@ -899,6 +896,7 @@ async function refreshAll() {
 
 async function loadDashboard() {
     const d = await api("/dashboard/summary");
+    updateBotMaintenanceBadge(d.bot_maintenance_mode);
     updateSubscriptionStatusBadge(d.subscriptions_open);
 
     setText("total_users", d.total_users || 0);
@@ -934,6 +932,19 @@ function updateSubscriptionStatusBadge(isOpen) {
     } else {
         badge.innerText = "الاشتراك متوقف ⛔";
         badge.className = "badge red";
+    }
+}
+
+function updateBotMaintenanceBadge(isMaintenance) {
+    const badge = document.getElementById("botMaintenanceBadge");
+    if (!badge) return;
+
+    if (isMaintenance) {
+        badge.innerText = "البوت متوقف ⛔";
+        badge.className = "badge red";
+    } else {
+        badge.innerText = "البوت يعمل ✅";
+        badge.className = "badge green";
     }
 }
 
@@ -1768,18 +1779,6 @@ function closeModal() {
     document.getElementById("modal").classList.add("hidden");
 }
 
-function botStatusModal() {
-    openModal("🛠️ حالة البوت", `
-        <div class="cards-grid">
-            <div class="card">
-                <div class="card-title">حالة البوت</div>
-                <div class="card-value">غير مربوط بعد</div>
-                <div class="card-note">يحتاج API من البوت لقراءة bot_maintenance_mode</div>
-            </div>
-        </div>
-    `);
-}
-
 async function openDeletedAccountsModal() {
     openModal("🗑️ سجل الحسابات المحذوفة", `
         <div id="deletedAccountsBox">جار تحميل السجل...</div>
@@ -1947,7 +1946,25 @@ async function toggleSubscriptions() {
 }
 
 async function toggleBotMaintenance() {
-    alert("الزر ظاهر الآن، لكنه يحتاج Backend API يغيّر bot_maintenance_mode داخل data.");
+    if (!confirm("هل تريد تغيير حالة البوت الآن؟")) return;
+
+    try {
+        const result = await api("/financial/toggle-maintenance", {
+            method: "POST"
+        });
+
+        updateBotMaintenanceBadge(result.bot_maintenance_mode);
+
+        alert(result.bot_maintenance_mode
+            ? "⛔ تم إيقاف البوت للصيانة"
+            : "✅ تم تشغيل البوت"
+        );
+
+        await refreshAll();
+
+    } catch (e) {
+        alert(e.message);
+    }
 }
 
 async function toggleSupportEmployees() {
