@@ -753,6 +753,7 @@ let usersChart = null;
 let plansChart = null;
 let currentDetailsUser = null;
 let countdownTimer = null;
+let supportCountTimer = null;
 
 function token() {
     return localStorage.getItem("token");
@@ -884,6 +885,7 @@ function showSection(name) {
 async function refreshAll() {
     await loadDashboard();
     await updateSupportRequestsCount();
+    startSupportCountPolling();
 
     if (!document.getElementById("usersSection").classList.contains("hidden")) {
         await loadUsers();
@@ -1595,6 +1597,20 @@ async function updateSupportRequestsCount() {
     }
 }
 
+function startSupportCountPolling() {
+    if (supportCountTimer) clearInterval(supportCountTimer);
+
+    supportCountTimer = setInterval(async () => {
+        if (token()) {
+            await updateSupportRequestsCount();
+
+            if (!document.getElementById("supportSection").classList.contains("hidden")) {
+                await loadSupportRequests();
+            }
+        }
+    }, 2000);
+}
+
 
 async function loadSupportRequests() {
     const box = document.getElementById("supportRequestsBox");
@@ -1605,6 +1621,7 @@ async function loadSupportRequests() {
         const requests = data.requests || [];
 
         document.getElementById("supportRequestsCount").innerText = requests.length;
+        document.getElementById("supportRequestsCount").classList.toggle("hidden", requests.length <= 0);
 
         if (!requests.length) {
             box.innerHTML = `
@@ -1620,7 +1637,10 @@ async function loadSupportRequests() {
             <div class="support-request-card" onclick="openSupportUser('${jsSafe(req.username)}')">
                 <div class="support-request-head">
                     <strong>👤 ${safeText(req.username)}</strong>
-                    <span class="badge orange">بانتظار الرد</span>
+                    ${req.replied
+                        ? `<span class="badge green">تم الرد ✅</span>`
+                        : `<span class="badge orange">بانتظار الرد ⏳</span>`
+                    }
                 </div>
 
                 <div>🧾 الاسم: ${safeText(req.full_name)}</div>
@@ -1872,6 +1892,8 @@ window.onload = async function () {
 
         try {
             await refreshAll();
+            await updateSupportRequestsCount();
+            startSupportCountPolling();
         } catch (e) {
             localStorage.removeItem("token");
             location.reload();

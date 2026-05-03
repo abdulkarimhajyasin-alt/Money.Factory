@@ -858,11 +858,17 @@ def get_support_requests(admin: str = Depends(get_current_admin)):
     result = []
 
     for username, waiting in support_waiting_reply.items():
-        if not waiting:
-            continue
+        
 
         if username not in users:
             continue
+
+        support_opened_at = data.get("support_opened_at", {})
+        opened_at = support_opened_at.get(username)
+
+        if opened_at:
+            if time.time() - float(opened_at) > 1800:
+                continue
 
         messages = support_chat_messages.get(username, [])
         last_message = messages[-1] if messages else {}
@@ -877,7 +883,8 @@ def get_support_requests(admin: str = Depends(get_current_admin)):
             "capital": round(float(data.get("user_deposits", {}).get(username, 0)), 2),
             "last_message": last_message.get("message", "لا توجد رسالة"),
             "last_time": last_message.get("time", "غير متوفر"),
-            "messages_count": len(messages)
+            "messages_count": len(messages),
+            "replied": not bool(waiting)
         })
 
     return {
@@ -897,6 +904,12 @@ def get_admin_support_chat(
 
     support_chat_messages = data.get("support_chat_messages", {})
     messages = support_chat_messages.get(username, [])
+    support_opened_at = data.get("support_opened_at", {})
+
+    if username not in support_opened_at:
+       support_opened_at[username] = time.time()
+       data["support_opened_at"] = support_opened_at
+       save_data(data)
 
     return {
         "username": username,
@@ -933,8 +946,12 @@ def admin_support_reply(
     data["support_chat_messages"] = support_chat_messages
 
     support_waiting_reply = data.get("support_waiting_reply", {})
-    support_waiting_reply.pop(username, None)
+    support_waiting_reply[username] = False
     data["support_waiting_reply"] = support_waiting_reply
+
+    support_opened_at = data.get("support_opened_at", {})
+    support_opened_at.pop(username, None)
+    data["support_opened_at"] = support_opened_at
 
     add_transaction(
         data,

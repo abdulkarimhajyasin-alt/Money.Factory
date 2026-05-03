@@ -502,6 +502,10 @@ def send_support_message(
     support_waiting_reply[username] = True
     data["support_waiting_reply"] = support_waiting_reply
 
+    support_opened_at = data.get("support_opened_at", {})
+    support_opened_at.pop(username, None)
+    data["support_opened_at"] = support_opened_at
+
     support_messages = data.get("web_support_messages", [])
     support_chat_messages = data.get("support_chat_messages", {})
     support_chat_messages.setdefault(username, []).append({
