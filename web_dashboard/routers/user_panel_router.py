@@ -490,8 +490,15 @@ def send_support_message(
     capital = get_capital(data, username)
     profit = get_profit_only(data, username)
 
-    # مهم: نفس مفتاح نظام الدعم في البوت
+    # منع المستخدم من إرسال أكثر من رسالة دعم قبل رد الإدارة
     support_waiting_reply = data.get("support_waiting_reply", {})
+
+    if support_waiting_reply.get(username, False):
+          raise HTTPException(
+            status_code=400,
+            detail="لديك رسالة دعم قيد الانتظار. يرجى انتظار رد الإدارة قبل إرسال رسالة جديدة."
+          )
+
     support_waiting_reply[username] = True
     data["support_waiting_reply"] = support_waiting_reply
 

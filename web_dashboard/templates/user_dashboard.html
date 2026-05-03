@@ -1437,7 +1437,7 @@ async function submitInlineSupport() {
         await loadSupportMessages(true);
 
     } catch (e) {
-        alert(e.message);
+        alert(e.message || "لا يمكنك إرسال رسالة جديدة قبل رد الدعم");
     }
 }
 
