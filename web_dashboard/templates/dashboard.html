@@ -500,7 +500,9 @@
     <div class="nav">
         <button id="navDashboard" class="active" onclick="showSection('dashboard')">Dashboard</button>
         <button id="navUsers" onclick="showSection('users')">Users Tree</button>
-        <button id="navFinancial" onclick="showSection('financial')">Financial</button>
+        <button id="navFinancial" onclick="showSection('financial')">
+            Financial <span id="financialRequestsCount" class="badge red hidden">0</span>
+        </button>
         <button id="navDetails" class="hidden" onclick="showSection('details')">Details</button>
         <button id="navSupport" onclick="showSection('support')">
             📩 Support <span id="supportRequestsCount" class="badge red">0</span>
@@ -857,6 +859,24 @@ function setText(id, value) {
     if (el) el.innerText = value;
 }
 
+function updateFinancialRequestsCount(d) {
+    const badge = document.getElementById("financialRequestsCount");
+    if (!badge) return;
+
+    const count =
+        Number(d.pending_deposits || 0) +
+        Number(d.pending_withdraws || 0) +
+        Number(d.pending_capital_withdraws || 0);
+
+    if (count > 0) {
+        badge.innerText = count;
+        badge.classList.remove("hidden");
+    } else {
+        badge.innerText = "0";
+        badge.classList.add("hidden");
+    }
+}
+
 function showSection(name) {
     ["dashboard", "users", "financial", "support", "details"].forEach(sec => {
         document.getElementById(sec + "Section").classList.add("hidden");
@@ -901,6 +921,7 @@ async function refreshAll() {
 
 async function loadDashboard() {
     const d = await api("/dashboard/summary");
+    updateFinancialRequestsCount(d);
     updateBotMaintenanceBadge(d.bot_maintenance_mode);
     updateSubscriptionStatusBadge(d.subscriptions_open);
     updateSupportEmployeesBadge(d.support_employees_enabled);
