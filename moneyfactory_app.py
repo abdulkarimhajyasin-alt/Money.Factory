@@ -3,6 +3,7 @@ import time
 import asyncio
 import os
 import random
+import requests
 from urllib.parse import quote
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -904,6 +905,35 @@ async def send_support_photo_to_operators(context, target_user_id, username, pho
 
     support_message_copies[str(target_user_id)] = sent_copies
     save_data()
+
+def send_telegram_photo(chat_id, file_bytes, caption=""):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
+
+    files = {
+        "photo": ("image.jpg", file_bytes)
+    }
+
+    data = {
+        "chat_id": chat_id,
+        "caption": caption
+    }
+
+    requests.post(url, data=data, files=files)
+
+
+def send_telegram_document(chat_id, file_bytes, filename, caption=""):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument"
+
+    files = {
+        "document": (filename, file_bytes)
+    }
+
+    data = {
+        "chat_id": chat_id,
+        "caption": caption
+    }
+
+    requests.post(url, data=data, files=files)    
 
 def ensure_user_defaults(username):
     if username not in user_statuses:
@@ -4981,7 +5011,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
       # 2) حفظ الرد في صندوق رسائل الويب بدون تعطيل الإرسال
       if target_username:
         try:
-            add_support_reply_to_web_chat(target_username, reply_text)
+            add_support_reply_to_web_chat(target_username, {
+                "type": "text",
+                "text": reply_text,
+                "from": "admin",
+                "time": now_str()
+               })
         except Exception as e:
             print(f"خطأ في حفظ رد الدعم داخل صندوق الويب: {e}")
 
