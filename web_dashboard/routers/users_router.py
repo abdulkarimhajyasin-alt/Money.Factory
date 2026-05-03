@@ -1234,3 +1234,24 @@ def mark_admin_notifications_read(
     return {
         "success": True
     }
+
+@router.delete("/support-chat/{username}")
+def delete_support_chat(
+    username: str,
+    admin: str = Depends(get_current_admin)
+):
+    users, data = load_storage()
+
+    ensure_user_exists(username, users)
+
+    support_chat_messages = data.get("support_chat_messages", {})
+    support_chat_messages.pop(username, None)
+
+    data["support_chat_messages"] = support_chat_messages
+
+    save_data(data)
+
+    return {
+        "success": True,
+        "message": f"تم مسح محادثة الدعم للمستخدم {username}"
+    }

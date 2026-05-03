@@ -1807,7 +1807,12 @@ async function renderAdminSupportChat(username) {
                 <div class="admin-chat-input">
                     <textarea id="adminSupportReplyText" rows="2" placeholder="اكتب ردك للمستخدم..."></textarea>
                     <button onclick="sendAdminSupportReply('${jsSafe(username)}')">إرسال</button>
-                </div>
+
+                </div>    
+                    <button class="btn-red" style="width:100%;margin-top:10px;" onclick="deleteAdminSupportChat('${jsSafe(username)}')">
+                        🗑️ مسح المحادثة لدى الطرفين
+                    </button>
+                
             </div>
         `);
     }
@@ -1863,6 +1868,24 @@ async function sendAdminSupportReply(username) {
         await updateSupportRequestsCount();
 
         alert("تم إرسال الرد للمستخدم");
+
+    } catch (e) {
+        alert(e.message);
+    }
+}
+
+async function deleteAdminSupportChat(username) {
+    if (!confirm("هل تريد مسح المحادثة لدى الأدمن والمستخدم؟")) return;
+    if (!confirm("تأكيد أخير: سيتم حذف كل رسائل صندوق الدعم لهذا المستخدم.")) return;
+
+    try {
+        await api("/users/support-chat/" + encodeURIComponent(username), {
+            method: "DELETE"
+        });
+
+        await loadAdminSupportChat(username);
+
+        alert("✅ تم مسح المحادثة لدى الطرفين");
 
     } catch (e) {
         alert(e.message);
