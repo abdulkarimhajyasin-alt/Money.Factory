@@ -1824,10 +1824,17 @@ async function renderAdminSupportChat(username) {
                 <div id="adminSupportChatList" class="admin-chat-list"></div>
 
                 <div class="admin-chat-input">
-                    <textarea id="adminSupportReplyText" rows="2" placeholder="اكتب ردك للمستخدم..."></textarea>
-                    <button onclick="sendAdminSupportReply('${jsSafe(username)}')">إرسال</button>
+                   <textarea id="adminSupportReplyText" rows="2" placeholder="اكتب ردك للمستخدم..."></textarea>
+                   <button onclick="sendAdminSupportReply('${jsSafe(username)}')">إرسال نص</button>
+                </div>
 
-                </div>    
+                <div style="margin-top:10px;">
+                   <input id="adminSupportMediaFile" type="file">
+                   <input id="adminSupportMediaCaption" placeholder="نص مرفق مع الصورة/الملف - اختياري">
+                   <button class="btn-blue" style="width:100%;margin-top:8px;" onclick="sendAdminSupportMedia('${jsSafe(username)}')">
+                       🖼️ إرسال صورة/ملف
+                </button>
+</div>    
                     <button class="btn-red" style="width:100%;margin-top:10px;" onclick="deleteAdminSupportChat('${jsSafe(username)}')">
                         🗑️ مسح المحادثة لدى الطرفين
                     </button>
@@ -1853,12 +1860,33 @@ async function loadAdminSupportChat(username) {
         return;
     }
 
-    list.innerHTML = messages.map(msg => `
+    list.innerHTML = messages.map(msg => {
+    let content = "";
+
+    if (msg.type === "photo") {
+        content = `
+            <div>🖼️ صورة مرفقة</div>
+            <div>${safeText(msg.message || msg.caption || "")}</div>
+            <div class="card-note">File ID: ${safeText(msg.file_id || "")}</div>
+        `;
+    } else if (msg.type === "document") {
+        content = `
+            <div>📄 ملف مرفق</div>
+            <div>${safeText(msg.filename || "ملف")}</div>
+            <div>${safeText(msg.message || msg.caption || "")}</div>
+            <div class="card-note">File ID: ${safeText(msg.file_id || "")}</div>
+        `;
+    } else {
+        content = safeText(msg.message || msg.text || "");
+    }
+
+    return `
         <div class="admin-chat-message ${msg.sender === "support" ? "support" : "user"}">
-            ${safeText(msg.message)}
+            ${content}
             <span class="admin-chat-time">${safeText(msg.time || "")}</span>
         </div>
-    `).join("");
+    `;
+}).join("");
 
     list.scrollTop = list.scrollHeight;
 }
@@ -1887,6 +1915,48 @@ async function sendAdminSupportReply(username) {
         await updateSupportRequestsCount();
 
         alert("تم إرسال الرد للمستخدم");
+
+    } catch (e) {
+        alert(e.message);
+    }
+}
+
+async function sendAdminSupportMedia(username) {
+    const fileInput = document.getElementById("adminSupportMediaFile");
+    const captionInput = document.getElementById("adminSupportMediaCaption");
+
+    if (!fileInput || !fileInput.files.length) {
+        alert("اختر صورة أو ملف أولاً");
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append("username", username);
+    formData.append("caption", captionInput ? captionInput.value.trim() : "");
+    formData.append("file", fileInput.files[0]);
+
+    try {
+        const response = await fetch("/users/support-reply-media", {
+            method: "POST",
+            headers: {
+                "Authorization": "Bearer " + token()
+            },
+            body: formData
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+            throw new Error(result.detail || "فشل إرسال الملف");
+        }
+
+        fileInput.value = "";
+        if (captionInput) captionInput.value = "";
+
+        await loadAdminSupportChat(username);
+        await updateSupportRequestsCount();
+
+        alert("✅ تم إرسال الصورة/الملف بنجاح");
 
     } catch (e) {
         alert(e.message);
@@ -2083,8 +2153,20 @@ async function openDeletedAccountsModal() {
 
 function broadcastModal() {
     openModal("📢 إرسال رسالة للجميع", `
-        <textarea id="broadcastText" rows="6" placeholder="اكتب الرسالة التي تريد إرسالها لجميع المستخدمين"></textarea>
-        <button class="btn-blue" onclick="sendBroadcastMessage()">إرسال</button>
+        <textarea id="broadcastText" rows="6" placeholder="اكتب الرسالة النصية هنا..."></textarea>
+
+        <button class="btn-blue" style="width:100%;margin-top:10px;" onclick="sendBroadcastMessage()">
+            إرسال نص فقط
+        </button>
+
+        <hr style="border-color:rgba(255,255,255,0.12);margin:18px 0;">
+
+        <input id="broadcastMediaFile" type="file">
+        <textarea id="broadcastMediaCaption" rows="4" placeholder="نص مرفق مع الصورة/الملف - اختياري"></textarea>
+
+        <button class="btn-green" style="width:100%;margin-top:10px;" onclick="sendBroadcastMedia()">
+            إرسال صورة/ملف للجميع
+        </button>
     `);
 }
 
@@ -2108,6 +2190,44 @@ async function sendBroadcastMessage() {
 
         alert(`✅ تم الإرسال بنجاح\n\n📨 الناجح: ${result.sent}\n❌ الفاشل: ${result.failed}`);
 
+        closeModal();
+
+    } catch (e) {
+        alert(e.message);
+    }
+}
+
+async function sendBroadcastMedia() {
+    const fileInput = document.getElementById("broadcastMediaFile");
+    const caption = document.getElementById("broadcastMediaCaption").value.trim();
+
+    if (!fileInput || !fileInput.files.length) {
+        alert("اختر صورة أو ملف أولاً");
+        return;
+    }
+
+    if (!confirm("هل تريد إرسال هذه الصورة/الملف إلى جميع المستخدمين؟")) return;
+
+    const formData = new FormData();
+    formData.append("caption", caption);
+    formData.append("file", fileInput.files[0]);
+
+    try {
+        const response = await fetch("/financial/broadcast-media", {
+            method: "POST",
+            headers: {
+                "Authorization": "Bearer " + token()
+            },
+            body: formData
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+            throw new Error(result.detail || "فشل الإرسال");
+        }
+
+        alert(`✅ تم الإرسال بنجاح\n\n📨 الناجح: ${result.sent}\n❌ الفاشل: ${result.failed}`);
         closeModal();
 
     } catch (e) {
@@ -2165,9 +2285,20 @@ function planMessageModal() {
             <option value="باقة VIP">باقة VIP</option>
         </select>
 
-        <textarea id="planMessageText" rows="6" placeholder="اكتب الرسالة هنا..."></textarea>
+        <textarea id="planMessageText" rows="6" placeholder="اكتب الرسالة النصية هنا..."></textarea>
 
-        <button class="btn-blue" onclick="sendPlanMessage()">إرسال</button>
+        <button class="btn-blue" style="width:100%;margin-top:10px;" onclick="sendPlanMessage()">
+            إرسال نص فقط
+        </button>
+
+        <hr style="border-color:rgba(255,255,255,0.12);margin:18px 0;">
+
+        <input id="planMediaFile" type="file">
+        <textarea id="planMediaCaption" rows="4" placeholder="نص مرفق مع الصورة/الملف - اختياري"></textarea>
+
+        <button class="btn-green" style="width:100%;margin-top:10px;" onclick="sendPlanMediaMessage()">
+            إرسال صورة/ملف حسب الباقة
+        </button>
     `);
 }
 
@@ -2188,7 +2319,7 @@ async function sendPlanMessage() {
     if (!confirm(`هل تريد إرسال الرسالة إلى مشتركي ${plan}؟`)) return;
 
     try {
-        const result = await api("/financial/message-by-plan", {
+        const result = await api("/financial/plan-message", {
             method: "POST",
             body: JSON.stringify({
                 plan: plan,
@@ -2198,6 +2329,51 @@ async function sendPlanMessage() {
 
         alert(`✅ تم الإرسال بنجاح\n\n📨 تم الإرسال إلى: ${result.sent || 0} مستخدم`);
 
+        closeModal();
+
+    } catch (e) {
+        alert(e.message);
+    }
+}
+
+async function sendPlanMediaMessage() {
+    const plan = document.getElementById("planMessagePlan").value;
+    const fileInput = document.getElementById("planMediaFile");
+    const caption = document.getElementById("planMediaCaption").value.trim();
+
+    if (!plan) {
+        alert("اختر الباقة أولاً");
+        return;
+    }
+
+    if (!fileInput || !fileInput.files.length) {
+        alert("اختر صورة أو ملف أولاً");
+        return;
+    }
+
+    if (!confirm(`هل تريد إرسال الصورة/الملف إلى مشتركي ${plan}؟`)) return;
+
+    const formData = new FormData();
+    formData.append("plan", plan);
+    formData.append("caption", caption);
+    formData.append("file", fileInput.files[0]);
+
+    try {
+        const response = await fetch("/financial/plan-message-media", {
+            method: "POST",
+            headers: {
+                "Authorization": "Bearer " + token()
+            },
+            body: formData
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+            throw new Error(result.detail || "فشل الإرسال");
+        }
+
+        alert(`✅ تم الإرسال بنجاح\n\n📨 الناجح: ${result.sent}\n❌ الفاشل: ${result.failed}`);
         closeModal();
 
     } catch (e) {

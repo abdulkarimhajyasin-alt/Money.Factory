@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 import json
@@ -95,6 +95,41 @@ def send_telegram(chat_id, text):
     except Exception:
         return False
 
+
+def send_telegram_media(chat_id, file_bytes, filename, caption=""):
+    if not BOT_TOKEN or not chat_id:
+        return False
+
+    filename_lower = filename.lower()
+
+    if filename_lower.endswith((".jpg", ".jpeg", ".png", ".webp")):
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
+        files = {
+            "photo": (filename, file_bytes)
+        }
+    else:
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument"
+        files = {
+            "document": (filename, file_bytes)
+        }
+
+    try:
+        response = requests.post(
+            url,
+            data={
+                "chat_id": int(chat_id),
+                "caption": caption or ""
+            },
+            files=files,
+            timeout=30
+        )
+
+        result = response.json()
+        return bool(result.get("ok"))
+
+    except Exception as e:
+        print(f"[SEND_TELEGRAM_MEDIA_ERROR] {e}")
+        return False
 
 def get_tg_id(data, username):
     tg_id = data.get("user_telegram_ids", {}).get(username)
@@ -523,6 +558,32 @@ def broadcast(request: MessageRequest, admin: str = Depends(get_current_admin)):
         "failed": failed
     }
 
+@router.post("/broadcast-media")
+async def broadcast_media(
+    caption: str = Form(""),
+    file: UploadFile = File(...),
+    admin: str = Depends(get_current_admin)
+):
+    chat_ids = db_get("chat_ids", [])
+
+    file_bytes = await file.read()
+    caption = caption.replace("\\n", "\n")
+
+    success = 0
+    failed = 0
+
+    for uid in chat_ids:
+        if send_telegram_media(uid, file_bytes, file.filename, caption):
+            success += 1
+        else:
+            failed += 1
+
+    return {
+        "success": True,
+        "sent": success,
+        "failed": failed
+    }
+
 
 @router.post("/plan-message")
 def plan_message(request: PlanMessageRequest, admin: str = Depends(get_current_admin)):
@@ -546,6 +607,47 @@ def plan_message(request: PlanMessageRequest, admin: str = Depends(get_current_a
             tg_id,
             f"📨 رسالة من الإدارة لمشتركي {request.plan}:\n\n{msg}"
         ):
+            success += 1
+        else:
+            failed += 1
+
+    return {
+        "success": True,
+        "sent": success,
+        "failed": failed
+    }
+
+@router.post("/plan-message-media")
+async def plan_message_media(
+    plan: str = Form(...),
+    caption: str = Form(""),
+    file: UploadFile = File(...),
+    admin: str = Depends(get_current_admin)
+):
+    data = db_get("data", {})
+
+    target_users = [
+        username
+        for username, user_plan in data.get("user_plans", {}).items()
+        if user_plan == plan
+    ]
+
+    file_bytes = await file.read()
+    caption = caption.replace("\\n", "\n")
+
+    final_caption = (
+        f"📨 رسالة من الإدارة لمشتركي {plan}:\n\n{caption}"
+        if caption
+        else f"📨 رسالة من الإدارة لمشتركي {plan}"
+    )
+
+    success = 0
+    failed = 0
+
+    for username in target_users:
+        tg_id = get_tg_id(data, username)
+
+        if send_telegram_media(tg_id, file_bytes, file.filename, final_caption):
             success += 1
         else:
             failed += 1
