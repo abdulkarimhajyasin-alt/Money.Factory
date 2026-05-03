@@ -745,6 +745,7 @@ let plansChart = null;
 let currentDetailsUser = null;
 let countdownTimer = null;
 let supportCountTimer = null;
+let liveCountersTimer = null;
 
 function token() {
     return localStorage.getItem("token");
@@ -847,6 +848,9 @@ async function login() {
 }
 
 function logout() {
+
+    if (liveCountersTimer) clearInterval(liveCountersTimer);
+
     localStorage.removeItem("token");
     location.reload();
     if (dashboardAutoRefreshTimer) {
@@ -896,7 +900,6 @@ function showSection(name) {
 
 async function refreshAll() {
     await loadDashboard();
-    startDashboardAutoRefresh();
     await updateSupportRequestsCount();
     startSupportCountPolling();
     await updateAdminNotificationsCount();
@@ -917,6 +920,51 @@ async function refreshAll() {
     if (currentDetailsUser) {
         await openUserDetails(currentDetailsUser);
     }
+}
+
+async function updateLiveCounters() {
+    try {
+        if (!token()) return;
+
+        const d = await api("/dashboard/summary");
+
+        setText("total_users", d.total_users || 0);
+        setText("verified_users", d.verified_users || 0);
+        setText("unverified_users", d.unverified_users || 0);
+        setText("active_users", d.active_users || 0);
+        setText("frozen_users", d.frozen_users || 0);
+        setText("banned_users", d.banned_users || 0);
+
+        setText("total_capital", money(d.total_capital || 0));
+        setText("total_balances", money(d.total_balances || 0));
+        setText("total_profit_only", money(d.total_profit_only || 0));
+
+        setText("silver_users", d.silver_users || 0);
+        setText("gold_users", d.gold_users || 0);
+        setText("vip_users", d.vip_users || 0);
+        setText("no_plan_users", d.no_plan_users || 0);
+
+        updateFinancialRequestsCount(d);
+        updateSubscriptionStatusBadge(d.subscriptions_open);
+        updateBotMaintenanceBadge(d.bot_maintenance_mode);
+        updateSupportEmployeesBadge(d.support_employees_enabled);
+
+        await updateSupportRequestsCount();
+        await updateAdminNotificationsCount();
+
+    } catch (e) {
+        console.log("live counters error:", e.message);
+    }
+}
+
+function startLiveCountersPolling() {
+    if (liveCountersTimer) {
+        clearInterval(liveCountersTimer);
+    }
+
+    liveCountersTimer = setInterval(async () => {
+        await updateLiveCounters();
+    }, 2000);
 }
 
 async function loadDashboard() {
@@ -2180,6 +2228,7 @@ window.onload = async function () {
 
         try {
             await refreshAll();
+            startLiveCountersPolling();
             await updateSupportRequestsCount();
             startSupportCountPolling();
             await updateAdminNotificationsCount();
@@ -2192,24 +2241,7 @@ window.onload = async function () {
 };
 
 
-let dashboardAutoRefreshTimer = null;
 
-function startDashboardAutoRefresh() {
-    if (dashboardAutoRefreshTimer) {
-        clearInterval(dashboardAutoRefreshTimer);
-    }
-
-    dashboardAutoRefreshTimer = setInterval(async () => {
-        try {
-            if (!token()) return;
-
-            await refreshAll();
-
-        } catch (e) {
-            console.log("auto refresh error:", e.message);
-        }
-    }, 10000); // ⏱ كل 2 ثانية (يمكن تغييرها إلى 1000)
-}
 </script>
 
 </body>
