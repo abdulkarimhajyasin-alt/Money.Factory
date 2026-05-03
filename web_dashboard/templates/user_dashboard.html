@@ -1357,6 +1357,18 @@ function updateSupportBadge(count) {
     }
 }
 
+async function getUserTelegramMediaUrl(fileId) {
+    if (!fileId) return "";
+
+    try {
+        const data = await api("/user-panel/telegram-media/" + encodeURIComponent(fileId));
+        return data.data_url || "";
+    } catch (e) {
+        console.log("media load error:", e.message);
+        return "";
+    }
+}
+
 async function loadSupportMessages(forceOpen = false) {
     try {
         const data = await api("/user-panel/support-messages");
@@ -1380,12 +1392,40 @@ async function loadSupportMessages(forceOpen = false) {
             msg => msg.sender === "support" && !msg.read
         );
 
-        list.innerHTML = messages.map(msg => `
-            <div class="support-message ${msg.sender === "support" ? "support" : "user"}">
-                ${escapeHtml(msg.message)}
-                <span class="support-message-time">${escapeHtml(msg.time || "")}</span>
-            </div>
-        `).join("");
+        let html = "";
+
+for (const msg of messages) {
+    let content = "";
+
+    if (msg.type === "photo" && msg.file_id) {
+        const imageUrl = await getUserTelegramMediaUrl(msg.file_id);
+
+        content = `
+            ${imageUrl
+                ? `<img src="${imageUrl}" style="max-width:220px;border-radius:14px;display:block;margin-bottom:8px;">`
+                : `<div>🖼️ صورة مرفقة</div>`
+            }
+            <div>${escapeHtml(msg.message || msg.caption || "")}</div>
+        `;
+    } else if (msg.type === "document") {
+        content = `
+            <div>📄 ملف مرفق</div>
+            <div>${escapeHtml(msg.filename || "ملف")}</div>
+            <div>${escapeHtml(msg.message || msg.caption || "")}</div>
+        `;
+    } else {
+        content = escapeHtml(msg.message || msg.text || "");
+    }
+
+    html += `
+        <div class="support-message ${msg.sender === "support" ? "support" : "user"}">
+            ${content}
+            <span class="support-message-time">${escapeHtml(msg.time || "")}</span>
+        </div>
+    `;
+}
+
+list.innerHTML = html;
 
         list.scrollTop = list.scrollHeight;
 
@@ -1542,56 +1582,6 @@ function escapeHtml(value) {
         .replaceAll(">", "&gt;")
         .replaceAll('"', "&quot;")
         .replaceAll("'", "&#039;");
-}
-
-async function loadSupportMessages() {
-    try {
-        const data = await api("/user-panel/support-messages");
-        const messages = data.messages || [];
-        const list = document.getElementById("supportMessagesList");
-
-        if (!list) return;
-
-        if (!messages.length) {
-            list.innerHTML = `<div class="support-empty">لا توجد رسائل حتى الآن</div>`;
-            return;
-        }
-
-        list.innerHTML = messages.map(msg => {
-    let content = "";
-
-    if (msg.type === "photo") {
-        content = `
-            <div>🖼️ صورة مرفقة</div>
-            <div>${escapeHtml(msg.message || msg.caption || "")}</div>
-        `;
-    } else if (msg.type === "document") {
-        content = `
-            <div>📄 ملف مرفق</div>
-            <div>${escapeHtml(msg.filename || "ملف")}</div>
-            <div>${escapeHtml(msg.message || msg.caption || "")}</div>
-        `;
-    } else {
-        content = escapeHtml(msg.message || msg.text || "");
-    }
-
-    return `
-        <div class="support-message ${msg.sender === "support" ? "support" : "user"}">
-            ${content}
-            <span class="support-message-time">${escapeHtml(msg.time || "")}</span>
-        </div>
-    `;
-}).join("");
-
-        list.scrollTop = list.scrollHeight;
-
-        if (messages.some(m => m.sender === "support")) {
-            showSupportChatBox();
-        }
-
-    } catch (e) {
-        console.log("تعذر تحميل رسائل الدعم:", e.message);
-    }
 }
 
 async function submitInlineSupport() {

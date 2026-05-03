@@ -1846,6 +1846,29 @@ async function renderAdminSupportChat(username) {
     await loadAdminSupportChat(username);
 }
 
+async function getAdminTelegramMediaUrl(fileId) {
+    if (!fileId) return "";
+
+    try {
+        const data = await api("/users/telegram-media/" + encodeURIComponent(fileId));
+        return data.data_url || "";
+    } catch (e) {
+        console.log("media load error:", e.message);
+        return "";
+    }
+}
+
+async function getAdminTelegramMediaUrl(fileId) {
+    if (!fileId) return "";
+
+    try {
+        const data = await api("/users/telegram-media/" + encodeURIComponent(fileId));
+        return data.data_url || "";
+    } catch (e) {
+        console.log("media load error:", e.message);
+        return "";
+    }
+}
 
 async function loadAdminSupportChat(username) {
     const list = document.getElementById("adminSupportChatList");
@@ -1860,33 +1883,40 @@ async function loadAdminSupportChat(username) {
         return;
     }
 
-    list.innerHTML = messages.map(msg => {
+    let html = "";
+
+for (const msg of messages) {
     let content = "";
 
-    if (msg.type === "photo") {
+    if (msg.type === "photo" && msg.file_id) {
+        const imageUrl = await getAdminTelegramMediaUrl(msg.file_id);
+
         content = `
-            <div>🖼️ صورة مرفقة</div>
+            ${imageUrl
+                ? `<img src="${imageUrl}" style="max-width:240px;border-radius:14px;display:block;margin-bottom:8px;">`
+                : `<div>🖼️ صورة مرفقة</div>`
+            }
             <div>${safeText(msg.message || msg.caption || "")}</div>
-            <div class="card-note">File ID: ${safeText(msg.file_id || "")}</div>
         `;
     } else if (msg.type === "document") {
         content = `
             <div>📄 ملف مرفق</div>
             <div>${safeText(msg.filename || "ملف")}</div>
             <div>${safeText(msg.message || msg.caption || "")}</div>
-            <div class="card-note">File ID: ${safeText(msg.file_id || "")}</div>
         `;
     } else {
         content = safeText(msg.message || msg.text || "");
     }
 
-    return `
+    html += `
         <div class="admin-chat-message ${msg.sender === "support" ? "support" : "user"}">
             ${content}
             <span class="admin-chat-time">${safeText(msg.time || "")}</span>
         </div>
     `;
-}).join("");
+}
+
+list.innerHTML = html;
 
     list.scrollTop = list.scrollHeight;
 }

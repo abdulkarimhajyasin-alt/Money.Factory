@@ -1,6 +1,7 @@
 import json
 import time
 import requests
+import base64
 from web_dashboard.config import BOT_TOKEN
 from datetime import datetime
 
@@ -1365,3 +1366,45 @@ def delete_support_chat(
         "success": True,
         "message": f"تم مسح محادثة الدعم للمستخدم {username}"
     }
+
+@router.get("/telegram-media/{file_id}")
+def get_admin_telegram_media(
+    file_id: str,
+    admin: str = Depends(get_current_admin)
+):
+    if not BOT_TOKEN:
+        raise HTTPException(status_code=500, detail="BOT_TOKEN غير موجود")
+
+    try:
+        file_info = requests.get(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/getFile",
+            params={"file_id": file_id},
+            timeout=15
+        ).json()
+
+        if not file_info.get("ok"):
+            raise HTTPException(status_code=404, detail="تعذر جلب الملف من Telegram")
+
+        file_path = file_info["result"]["file_path"]
+
+        file_response = requests.get(
+            f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}",
+            timeout=30
+        )
+
+        if file_response.status_code != 200:
+            raise HTTPException(status_code=404, detail="تعذر تحميل الملف")
+
+        content_type = file_response.headers.get("content-type", "application/octet-stream")
+        encoded = base64.b64encode(file_response.content).decode("utf-8")
+
+        return {
+            "data_url": f"data:{content_type};base64,{encoded}",
+            "content_type": content_type,
+            "file_path": file_path
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Media error: {str(e)}")
