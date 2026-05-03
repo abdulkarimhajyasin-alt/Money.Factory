@@ -638,10 +638,10 @@
                 <button class="action-card" onclick="openTransactionsModal()"><span>📜</span> سجل العمليات</button>
                 <button class="action-card" onclick="openPasswordModal()"><span>🔐</span> تغيير كلمة المرور</button>
                 <button class="action-card support-action" onclick="openSupportModal()">
-    <span>📩</span>
-    مراسلة الدعم
-    <b id="supportUnreadBadge" class="support-unread-badge hidden">0</b>
-</button>
+                    <span>📩</span>
+                    مراسلة الدعم
+                    <b id="supportUnreadBadge" class="support-unread-badge hidden">0</b>
+                </button>
                 <button class="action-card" onclick="openDeleteModal()"><span>🗑️</span> حذف حسابي</button>
             </div>
         </div>
@@ -708,6 +708,10 @@
 let currentUser = null;
 let countdownTimer = null;
 let financeChart = null;
+
+let supportPollingTimer = null;
+let lastSupportMessageCount = 0;
+let supportBoxOpenedOnce = false;
 
 function token() {
     return localStorage.getItem("user_token");
@@ -895,11 +899,11 @@ async function loadMe() {
 
         renderUser();
 
-await loadSupportMessages(false);
-startSupportPolling();
+        await loadSupportMessages(false);
+        startSupportPolling();
 
-await loadSupportMessages();
-startSupportPolling();
+        await loadSupportMessages();
+        startSupportPolling();
     } catch (e) {
         localStorage.removeItem("user_token");
         document.getElementById("loginView").classList.remove("hidden");
@@ -1293,15 +1297,25 @@ async function submitPassword() {
     }
 }
 
-let supportPollingTimer = null;
-let lastSupportMessageCount = 0;
-let supportBoxOpenedOnce = false;
-
 async function openSupportModal() {
     showSupportChatBox();
     supportBoxOpenedOnce = true;
     await loadSupportMessages(true);
     await markSupportMessagesRead();
+}
+
+async function markSupportMessagesRead() {
+    try {
+        await api("/user-panel/support-mark-read", {
+            method: "POST",
+            body: JSON.stringify({})
+        });
+
+        updateSupportBadge(0);
+
+    } catch (e) {
+        console.log("تعذر تعليم رسائل الدعم كمقروءة:", e.message);
+    }
 }
 
 function showSupportChatBox() {
@@ -1327,9 +1341,23 @@ function updateSupportBadge(count) {
     }
 }
 
+function updateSupportBadge(count) {
+    const badge = document.getElementById("supportUnreadBadge");
+    if (!badge) return;
+
+    if (count > 0) {
+        badge.innerText = count;
+        badge.classList.remove("hidden");
+    } else {
+        badge.innerText = "0";
+        badge.classList.add("hidden");
+    }
+}
+
 async function loadSupportMessages(forceOpen = false) {
     try {
         const data = await api("/user-panel/support-messages");
+
         const messages = data.messages || [];
         const unreadCount = Number(data.unread_count || 0);
         const list = document.getElementById("supportMessagesList");
@@ -1345,7 +1373,9 @@ async function loadSupportMessages(forceOpen = false) {
         }
 
         const hasNewMessage = messages.length > lastSupportMessageCount;
-        const hasSupportMessage = messages.some(m => m.sender === "support");
+        const hasUnreadSupportMessage = messages.some(
+            msg => msg.sender === "support" && !msg.read
+        );
 
         list.innerHTML = messages.map(msg => `
             <div class="support-message ${msg.sender === "support" ? "support" : "user"}">
@@ -1356,18 +1386,38 @@ async function loadSupportMessages(forceOpen = false) {
 
         list.scrollTop = list.scrollHeight;
 
-        if (forceOpen || (hasNewMessage && hasSupportMessage && unreadCount > 0)) {
+        if (forceOpen || hasUnreadSupportMessage) {
             showSupportChatBox();
         }
 
-        if (hasNewMessage && hasSupportMessage && unreadCount > 0 && !supportBoxOpenedOnce) {
-            showBrowserNotification("رسالة جديدة من الدعم", "لديك رد جديد من فريق الدعم");
+        if (hasNewMessage && hasUnreadSupportMessage) {
+            showBrowserNotification(
+                "رسالة جديدة من الدعم",
+                "لديك رد جديد من فريق الدعم"
+            );
         }
 
         lastSupportMessageCount = messages.length;
 
     } catch (e) {
         console.log("تعذر تحميل رسائل الدعم:", e.message);
+    }
+}
+
+function showBrowserNotification(title, body) {
+    if (!("Notification" in window)) return;
+
+    if (Notification.permission === "granted") {
+        new Notification(title, { body });
+        return;
+    }
+
+    if (Notification.permission !== "denied") {
+        Notification.requestPermission().then(permission => {
+            if (permission === "granted") {
+                new Notification(title, { body });
+            }
+        });
     }
 }
 
