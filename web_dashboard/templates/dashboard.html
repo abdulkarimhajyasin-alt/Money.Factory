@@ -1496,6 +1496,7 @@ async function loadPendingDeposits() {
                     <td>
                         <button class="btn-green" onclick="approveDeposit('${item.user_id}')">Approve</button>
                         <button class="btn-red" onclick="rejectDeposit('${item.user_id}')">Reject</button>
+                        <button class="btn-blue" onclick="openAddWalletModal('${jsSafe(item.username)}')">💼 إضافة محفظة</button>
                     </td>
                  </tr>
             `);
@@ -2161,6 +2162,55 @@ async function markAdminNotificationsRead() {
 
     } catch (e) {
         console.log("mark notifications read error:", e.message);
+    }
+}
+
+function openAddWalletModal(username) {
+    openModal("💼 إضافة محفظة للمستخدم", `
+        <div class="card-note" style="margin-bottom:10px;">
+            المستخدم: <strong>${safeText(username)}</strong>
+        </div>
+
+        <input id="walletAddressInput" placeholder="أدخل عنوان المحفظة">
+        <input id="walletNetworkInput" placeholder="أدخل اسم الشبكة مثال: TRC20">
+
+        <button class="btn-blue" style="width:100%;margin-top:10px;" onclick="saveUserWallet('${jsSafe(username)}')">
+            حفظ المحفظة
+        </button>
+    `);
+}
+
+async function saveUserWallet(username) {
+    const walletAddress = document.getElementById("walletAddressInput").value.trim();
+    const walletNetwork = document.getElementById("walletNetworkInput").value.trim();
+
+    if (!walletAddress) {
+        alert("أدخل عنوان المحفظة");
+        return;
+    }
+
+    if (!walletNetwork) {
+        alert("أدخل اسم الشبكة");
+        return;
+    }
+
+    try {
+        await api("/financial/add-wallet", {
+            method: "POST",
+            body: JSON.stringify({
+                username: username,
+                wallet_address: walletAddress,
+                wallet_network: walletNetwork
+            })
+        });
+
+        alert("✅ تم حفظ المحفظة بنجاح");
+
+        closeModal();
+        await loadFinancial();
+
+    } catch (e) {
+        alert(e.message);
     }
 }
 

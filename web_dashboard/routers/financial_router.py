@@ -35,6 +35,10 @@ class PlanMessageRequest(BaseModel):
     plan: str
     message: str
 
+class AddWalletRequest(BaseModel):
+    username: str
+    wallet_address: str
+    wallet_network: str
 
 def now_str():
     return time.strftime("%Y-%m-%d %H:%M:%S")
@@ -230,6 +234,48 @@ def get_pending_deposits(admin: str = Depends(get_current_admin)):
     "proof_image_url": build_telegram_file_url(proof_file_id)
       })
     return {"count": len(result), "pending_deposits": result}
+
+@router.post("/add-wallet")
+def add_wallet_to_user(
+    request: AddWalletRequest,
+    admin: str = Depends(get_current_admin)
+):
+    data = db_get("data", {})
+    users = db_get("users", {})
+
+    username = request.username.strip()
+    wallet_address = request.wallet_address.strip()
+    wallet_network = request.wallet_network.strip()
+
+    if not username:
+        raise HTTPException(status_code=400, detail="اسم المستخدم غير موجود")
+
+    if username not in users:
+        raise HTTPException(status_code=404, detail="المستخدم غير موجود")
+
+    if not wallet_address:
+        raise HTTPException(status_code=400, detail="أدخل عنوان محفظة صحيح")
+
+    if not wallet_network:
+        raise HTTPException(status_code=400, detail="أدخل اسم شبكة صحيح")
+
+    user_wallet_address = data.get("user_wallet_address", {})
+    user_wallet_network = data.get("user_wallet_network", {})
+
+    user_wallet_address[username] = wallet_address
+    user_wallet_network[username] = wallet_network
+
+    data["user_wallet_address"] = user_wallet_address
+    data["user_wallet_network"] = user_wallet_network
+
+    db_set("data", data)
+
+    return {
+        "success": True,
+        "username": username,
+        "wallet_address": wallet_address,
+        "wallet_network": wallet_network
+    }
 
 
 @router.post("/approve-deposit")
