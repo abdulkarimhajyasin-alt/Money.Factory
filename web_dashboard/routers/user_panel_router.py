@@ -905,10 +905,47 @@ def create_withdraw_request(
 
     save_data(data)
 
+    reply_markup = {
+    "inline_keyboard": [
+                [
+                 {
+                "text": "✅ موافقة",
+                "callback_data": f"approve_withdraw_{user_id}"
+                  },
+               {
+                "text": "❌ رفض",
+                "callback_data": f"reject_withdraw_{user_id}"
+               }
+                 ]
+            ]
+           }
+
+    admin_text = (
+    f"💸 طلب سحب أرباح جديد\n\n"
+    f"👤 المستخدم: {username}\n"
+    f"🆔 ID: {user_id}\n"
+    f"📌 الحالة: {get_status(data, username)}\n"
+    f"📦 الباقة: {plan}\n"
+    f"💰 مبلغ السحب: {amount}$\n"
+    f"🕒 وقت الطلب: {pending[str(user_id)]['time']}\n\n"
+    f"💼 عنوان المحفظة المدخل للسحب: {request.wallet_address}\n"
+    f"🌐 الشبكة المدخلة للسحب: {request.wallet_network}\n\n"
+    f"🏦 محفظة الإيداع المحفوظة: {saved_wallet}\n"
+    f"🌐 شبكة الإيداع المحفوظة: {saved_network}\n\n"
+    f"{wallets_match}"
+        )
+
+    telegram_sent = send_telegram_message(
+    ADMIN_ID,
+    admin_text,
+    reply_markup=reply_markup
+            )
+
     return {
-        "success": True,
-        "message": "Withdraw request created successfully"
-    }
+    "success": True,
+    "message": "Withdraw request created successfully",
+    "telegram_sent": telegram_sent
+         }
 
 
 @router.post("/capital-withdraw-request")
