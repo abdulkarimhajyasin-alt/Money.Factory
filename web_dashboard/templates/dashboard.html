@@ -545,12 +545,14 @@
         <span>🗑️</span>سجل الحسابات المحذوفة
     </button>
 
-    <button class="action-card" onclick="toggleSubscriptions()">
-        <span>⛔</span>إيقاف/تشغيل الاشتراك
+    <button id="subscriptionsToggleBtn" class="action-card" onclick="toggleSubscriptions()">
+        <span>📌</span>
+        <strong id="subscriptionsToggleText">الاشتراك</strong>
     </button>
 
-    <button class="action-card" onclick="toggleBotMaintenance()">
-        <span>⏯️</span>إيقاف/تشغيل البوت
+    <button id="botToggleBtn" class="action-card" onclick="toggleBotMaintenance()">
+        <span>⏯️</span>
+        <strong id="botToggleText">البوت</strong>
     </button>
 
     <button class="action-card" onclick="broadcastModal()">
@@ -928,6 +930,14 @@ function updateSubscriptionStatusBadge(isOpen) {
         badge.innerText = "الاشتراك متوقف ⛔";
         badge.className = "badge red";
     }
+
+    // 🔥 تغيير نص الزر
+    const btnText = document.getElementById("subscriptionsToggleText");
+    if (btnText) {
+        btnText.innerText = isOpen
+            ? "إيقاف الاشتراك"
+            : "تشغيل الاشتراك";
+    }
 }
 
 function updateBotMaintenanceBadge(isMaintenance) {
@@ -940,6 +950,14 @@ function updateBotMaintenanceBadge(isMaintenance) {
     } else {
         badge.innerText = "البوت يعمل ✅";
         badge.className = "badge green";
+    }
+
+    // 🔥 تغيير نص الزر
+    const btnText = document.getElementById("botToggleText");
+    if (btnText) {
+        btnText.innerText = isMaintenance
+            ? "تشغيل البوت"
+            : "إيقاف البوت";
     }
 }
 
