@@ -517,6 +517,7 @@
                 <div style="display:flex;gap:8px;flex-wrap:wrap;">
                     <span class="badge blue">Admin</span>
                     <span class="badge green">Live</span>
+                    <span id="subscriptionStatusBadge" class="badge">الاشتراك: ---</span>
                 </div>
             </div>
 
@@ -542,16 +543,8 @@
         <span>🗑️</span>سجل الحسابات المحذوفة
     </button>
 
-    <button class="action-card" onclick="summaryModal()">
-        <span>📊</span>ملخص مالي
-    </button>
-
     <button class="action-card" onclick="toggleSubscriptions()">
         <span>⛔</span>إيقاف/تشغيل الاشتراك
-    </button>
-
-    <button class="action-card" onclick="subscriptionsStatusModal()">
-        <span>📌</span>حالة الاشتراك
     </button>
 
     <button class="action-card" onclick="toggleBotMaintenance()">
@@ -906,6 +899,7 @@ async function refreshAll() {
 
 async function loadDashboard() {
     const d = await api("/dashboard/summary");
+    updateSubscriptionStatusBadge(d.subscriptions_open);
 
     setText("total_users", d.total_users || 0);
     setText("verified_users", d.verified_users || 0);
@@ -928,6 +922,19 @@ async function loadDashboard() {
     setText("pending_capital_withdraws", d.pending_capital_withdraws || 0);
 
     renderCharts(d);
+}
+
+function updateSubscriptionStatusBadge(isOpen) {
+    const badge = document.getElementById("subscriptionStatusBadge");
+    if (!badge) return;
+
+    if (isOpen) {
+        badge.innerText = "الاشتراك مفتوح ✅";
+        badge.className = "badge green";
+    } else {
+        badge.innerText = "الاشتراك متوقف ⛔";
+        badge.className = "badge red";
+    }
 }
 
 function renderCharts(d) {
@@ -1761,28 +1768,6 @@ function closeModal() {
     document.getElementById("modal").classList.add("hidden");
 }
 
-function summaryModal() {
-    openModal("📊 الملخص المالي", `
-        <div class="cards-grid">
-            <div class="card"><div class="card-title">رأس المال</div><div class="card-value">${document.getElementById("total_capital").innerText}</div></div>
-            <div class="card"><div class="card-title">الأرصدة</div><div class="card-value">${document.getElementById("total_balances").innerText}</div></div>
-            <div class="card"><div class="card-title">الأرباح</div><div class="card-value">${document.getElementById("total_profit_only").innerText}</div></div>
-        </div>
-    `);
-}
-
-function subscriptionsStatusModal() {
-    openModal("📌 حالة الاشتراك", `
-        <div class="cards-grid">
-            <div class="card">
-                <div class="card-title">حالة الاشتراك</div>
-                <div class="card-value">غير مربوط بعد</div>
-                <div class="card-note">يحتاج API من البوت لقراءة subscriptions_open</div>
-            </div>
-        </div>
-    `);
-}
-
 function botStatusModal() {
     openModal("🛠️ حالة البوت", `
         <div class="cards-grid">
@@ -1940,7 +1925,25 @@ async function confirmDeleteUser() {
 }
 
 async function toggleSubscriptions() {
-    alert("الزر ظاهر الآن، لكنه يحتاج Backend API يغيّر subscriptions_open داخل data.");
+    if (!confirm("هل تريد تغيير حالة الاشتراك الآن؟")) return;
+
+    try {
+        const result = await api("/financial/toggle-subscriptions", {
+            method: "POST"
+        });
+
+        updateSubscriptionStatusBadge(result.subscriptions_open);
+
+        alert(result.subscriptions_open
+            ? "✅ تم فتح الاشتراك بنجاح"
+            : "⛔ تم إيقاف الاشتراك بنجاح"
+        );
+
+        await refreshAll();
+
+    } catch (e) {
+        alert(e.message);
+    }
 }
 
 async function toggleBotMaintenance() {
