@@ -4869,91 +4869,105 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # رد الأدمن على المستخدم
     # -------------------------
     elif is_support_operator(user_id) and isinstance(user_states.get(user_id), dict) and user_states[user_id].get("step") == "admin_reply_support":
-        reply_text = text.strip()
+      reply_text = text.strip()
 
-        if not reply_text:
-            await update.message.reply_text("❌ لا يمكن إرسال رد فارغ")
-            return
-
-        target_user_id = user_states[user_id]["target_user_id"]
-
-        target_username = logged_in_users.get(target_user_id)
-        if not target_username:
-            # محاولة عكسية لإيجاد اسم المستخدم
-            for uname in users:
-                found_id = find_user_id_by_username(uname)
-                if found_id == target_user_id:
-                    target_username = uname
-                    break
-
-        try:
-            batch_id = create_admin_batch("support_reply", f"user_id:{target_user_id}")
-
-            sent_msg = await context.bot.send_message(
-                chat_id=target_user_id,
-                text=(
-                    f"📩 رد من الدعم:\n\n"
-                    f"{reply_text}"
-                )
-            )
-            add_support_reply_to_web_chat(username, reply_text)
-
-            add_message_to_batch(batch_id, target_user_id, sent_msg.message_id)
-
-            if target_username:
-               operator_text = get_support_operator_text(user_id)
-
-               add_transaction(
-                   target_username,
-                   "support_reply",
-                   0,
-                   f"رد {operator_text} ID {user_id}: {reply_text[:80]}"
-                )
-
-               support_waiting_reply.pop(target_username, None)
-               save_data()
-
-               if is_support_employee(user_id):
-                  try:
-                       employee_name = user_full_name.get(
-                         logged_in_users.get(user_id, ""),
-                         "غير موثق"
-                       )
-
-                       await context.bot.send_message(
-                          chat_id=ADMIN_ID,
-                          text=(
-                            f"👨‍💼 رد موظف دعم على المستخدم\n\n"
-                            f"👤 المستخدم: {target_username}\n"
-                            f"🆔 User ID: {target_user_id}\n"
-                            f"👨‍💼 موظف الدعم: {employee_name} ({user_id})\n"
-                            f"🆔 ID: {user_id}\n"
-                            f"🕒 الوقت: {now_str()}\n\n"
-                            f"📝 الرد:\n{reply_text}"
-                            )
-                             )
-                  except Exception as e:
-                       print(f"خطأ في إرسال إشعار رد موظف الدعم للمدير: {e}")
-
-            user_states.pop(user_id, None)
-
-            await update.message.reply_text(
-                "✅ تم إرسال الرد إلى المستخدم بنجاح",
-                reply_markup=admin_keyboard() if user_id == ADMIN_ID else main_menu_keyboard()
-            )
-
-            await update.message.reply_text(
-                "يمكنك حذف آخر إرسال إذا أردت:",
-                reply_markup=build_delete_last_batch_keyboard()
-            )
-        except Exception as e:
-            print(f"خطأ في إرسال رد الدعم: {e}")
-            user_states.pop(user_id, None)
-            await update.message.reply_text(
-                "❌ تعذر إرسال الرد إلى المستخدم",
-                reply_markup=admin_keyboard() if user_id == ADMIN_ID else main_menu_keyboard()
-            )
+      if not reply_text:
+        await update.message.reply_text("❌ لا يمكن إرسال رد فارغ")
         return
+
+      target_user_id = user_states[user_id]["target_user_id"]
+
+      target_username = logged_in_users.get(target_user_id)
+      if not target_username:
+        for uname in users:
+            found_id = find_user_id_by_username(uname)
+            if found_id == target_user_id:
+                target_username = uname
+                break
+
+      # 1) إرسال الرسالة للمستخدم فقط
+      try:
+        batch_id = create_admin_batch("support_reply", f"user_id:{target_user_id}")
+
+        sent_msg = await context.bot.send_message(
+            chat_id=target_user_id,
+            text=(
+                f"📩 رد من الدعم:\n\n"
+                f"{reply_text}"
+            )
+        )
+
+        add_message_to_batch(batch_id, target_user_id, sent_msg.message_id)
+
+      except Exception as e:
+        print(f"خطأ في إرسال رد الدعم للمستخدم: {e}")
+        user_states.pop(user_id, None)
+        await update.message.reply_text(
+            "❌ تعذر إرسال الرد إلى المستخدم",
+            reply_markup=admin_keyboard() if user_id == ADMIN_ID else main_menu_keyboard()
+        )
+        return
+
+      # 2) حفظ الرد في صندوق رسائل الويب بدون تعطيل الإرسال
+      if target_username:
+        try:
+            add_support_reply_to_web_chat(target_username, reply_text)
+        except Exception as e:
+            print(f"خطأ في حفظ رد الدعم داخل صندوق الويب: {e}")
+
+      # 3) تسجيل العملية وتنظيف حالة الدعم
+      if target_username:
+        try:
+            operator_text = get_support_operator_text(user_id)
+
+            add_transaction(
+                target_username,
+                "support_reply",
+                0,
+                f"رد {operator_text} ID {user_id}: {reply_text[:80]}"
+            )
+
+            support_waiting_reply.pop(target_username, None)
+            save_data()
+
+        except Exception as e:
+            print(f"خطأ في تسجيل عملية رد الدعم: {e}")
+
+        if is_support_employee(user_id):
+            try:
+                employee_name = user_full_name.get(
+                    logged_in_users.get(user_id, ""),
+                    "غير موثق"
+                )
+
+                await context.bot.send_message(
+                    chat_id=ADMIN_ID,
+                    text=(
+                        f"👨‍💼 رد موظف دعم على المستخدم\n\n"
+                        f"👤 المستخدم: {target_username}\n"
+                        f"🆔 User ID: {target_user_id}\n"
+                        f"👨‍💼 موظف الدعم: {employee_name} ({user_id})\n"
+                        f"🆔 ID: {user_id}\n"
+                        f"🕒 الوقت: {now_str()}\n\n"
+                        f"📝 الرد:\n{reply_text}"
+                    )
+                )
+            except Exception as e:
+                print(f"خطأ في إرسال إشعار رد موظف الدعم للمدير: {e}")
+
+      user_states.pop(user_id, None)
+
+      await update.message.reply_text(
+        "✅ تم إرسال الرد إلى المستخدم بنجاح",
+        reply_markup=admin_keyboard() if user_id == ADMIN_ID else main_menu_keyboard()
+      )
+
+      await update.message.reply_text(
+        "يمكنك حذف آخر إرسال إذا أردت:",
+        reply_markup=build_delete_last_batch_keyboard()
+      )
+
+      return
     
     elif user_id == ADMIN_ID and isinstance(user_states.get(user_id), dict) and user_states[user_id].get("step") == "admin_add_wallet_address":
         wallet_address = text.strip()
