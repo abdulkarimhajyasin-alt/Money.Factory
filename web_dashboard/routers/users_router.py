@@ -1172,3 +1172,65 @@ def get_deleted_accounts(admin: str = Depends(get_current_admin)):
         "count": len(logs),
         "logs": list(reversed(logs))
     }
+
+class EmptyRequest(BaseModel):
+    pass
+
+
+@router.get("/admin-notifications")
+def get_admin_notifications(admin: str = Depends(get_current_admin)):
+    users, data = load_storage()
+
+    notifications = data.get("admin_notifications", [])
+
+    if not isinstance(notifications, list):
+        notifications = []
+
+    unread_count = sum(
+        1 for item in notifications
+        if not item.get("read", False)
+    )
+
+    return {
+        "count": len(notifications),
+        "unread_count": unread_count,
+        "notifications": list(reversed(notifications[-100:]))
+    }
+
+
+@router.post("/admin-notifications-clear")
+def clear_admin_notifications(
+    request: EmptyRequest,
+    admin: str = Depends(get_current_admin)
+):
+    users, data = load_storage()
+
+    data["admin_notifications"] = []
+
+    save_data(data)
+
+    return {
+        "success": True
+    }
+
+
+@router.post("/admin-notifications-read")
+def mark_admin_notifications_read(
+    request: EmptyRequest,
+    admin: str = Depends(get_current_admin)
+):
+    users, data = load_storage()
+
+    notifications = data.get("admin_notifications", [])
+
+    if isinstance(notifications, list):
+        for item in notifications:
+            item["read"] = True
+
+    data["admin_notifications"] = notifications
+
+    save_data(data)
+
+    return {
+        "success": True
+    }

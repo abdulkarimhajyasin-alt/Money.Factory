@@ -56,6 +56,7 @@ pending_deposit_requests = {}
 pending_withdraw_requests = {}
 REFERRAL_DATA = {}
 chat_ids = []
+admin_notifications = []
 logged_in_users = {}
 pending_verification_requests = {}   # طلبات التوثيق بانتظار موافقة الأدمن
 user_residence = {}                  # مكان إقامة المستخدم
@@ -598,6 +599,7 @@ def load_data():
     global support_waiting_reply, support_employees_enabled, support_claims, support_message_copies
     global admin_sent_batches, admin_last_batch_id
     global deleted_accounts_log
+    global admin_notifications
     global manual_withdraw_open
     global user_created_time
     global user_tree_views
@@ -647,6 +649,7 @@ def load_data():
     admin_sent_batches = data.get("admin_sent_batches", {})
     admin_last_batch_id = data.get("admin_last_batch_id", None)
     deleted_accounts_log = data.get("deleted_accounts_log", [])
+    admin_notifications = data.get("admin_notifications", [])
     manual_withdraw_open = data.get("manual_withdraw_open", {})
     user_created_time = data.get("user_created_time", {})
     user_tree_views = data.get("user_tree_views", {})
@@ -702,6 +705,7 @@ def save_data():
         "admin_sent_batches": admin_sent_batches,
         "admin_last_batch_id": admin_last_batch_id,
         "deleted_accounts_log": deleted_accounts_log,
+        "admin_notifications": admin_notifications,
         "manual_withdraw_open": manual_withdraw_open,
         "user_created_time": user_created_time,
         "user_tree_views": user_tree_views,
@@ -2423,6 +2427,22 @@ def add_deleted_account_log(entry):
 
     save_data()
 
+def add_admin_notification(title, message, notification_type="info"):
+    global admin_notifications
+
+    admin_notifications.append({
+        "title": title,
+        "message": message,
+        "type": notification_type,
+        "time": now_str(),
+        "read": False
+    })
+
+    if len(admin_notifications) > 1000:
+        del admin_notifications[:-1000]
+
+    save_data()    
+
 def build_deleted_accounts_log_text(limit=10):
     if not deleted_accounts_log:
         return "📭 لا يوجد أي سجل لحسابات محذوفة حتى الآن"
@@ -2901,10 +2921,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📊 عدد المستخدمين: {len(chat_ids)}"
         )
 
+        add_admin_notification(
+            title="🚀 مستخدم جديد دخل البوت",
+            message=msg,
+            notification_type="new_bot_user"
+        )
+
         try:
-            await context.bot.send_message(chat_id=ADMIN_ID, text=msg)
+           await context.bot.send_message(chat_id=ADMIN_ID, text=msg)
         except Exception as e:
-            print(f"خطأ في إرسال رسالة للأدمن: {e}")
+           print(f"خطأ في إرسال رسالة للأدمن: {e}")
 
     await update.message.reply_text("اختر خيار:", reply_markup=auth_keyboard())
 

@@ -505,6 +505,9 @@
         <button id="navSupport" onclick="showSection('support')">
             📩 Support <span id="supportRequestsCount" class="badge red">0</span>
         </button>
+        <button id="adminNotificationsBtn" onclick="openAdminNotificationsModal()">
+            🔔 <span id="adminNotificationsCount" class="badge red hidden">0</span>
+        </button>
     </div>
 
     <section id="dashboardSection">
@@ -872,6 +875,8 @@ async function refreshAll() {
     await loadDashboard();
     await updateSupportRequestsCount();
     startSupportCountPolling();
+    await updateAdminNotificationsCount();
+    startAdminNotificationsPolling();
 
     if (!document.getElementById("usersSection").classList.contains("hidden")) {
         await loadUsers();
@@ -1799,6 +1804,116 @@ async function sendAdminSupportReply(username) {
     }
 }
 
+let adminNotificationsTimer = null;
+
+async function updateAdminNotificationsCount() {
+    try {
+        const data = await api("/users/admin-notifications");
+        const count = Number(data.unread_count || 0);
+        const badge = document.getElementById("adminNotificationsCount");
+
+        if (!badge) return;
+
+        if (count > 0) {
+            badge.innerText = count;
+            badge.classList.remove("hidden");
+        } else {
+            badge.innerText = "0";
+            badge.classList.add("hidden");
+        }
+
+    } catch (e) {
+        console.log("notifications count error:", e.message);
+    }
+}
+
+function startAdminNotificationsPolling() {
+    if (adminNotificationsTimer) clearInterval(adminNotificationsTimer);
+
+    adminNotificationsTimer = setInterval(async () => {
+        if (token()) {
+            await updateAdminNotificationsCount();
+        }
+    }, 3000);
+}
+
+async function openAdminNotificationsModal() {
+    openModal("🔔 إشعارات الأدمن", `
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+            <button class="btn-red" onclick="clearAdminNotifications()">مسح جميع الإشعارات</button>
+            <button class="btn-dark" onclick="markAdminNotificationsRead()">تعليم كمقروء</button>
+        </div>
+
+        <div id="adminNotificationsBox">جار تحميل الإشعارات...</div>
+    `);
+
+    await loadAdminNotifications();
+    await markAdminNotificationsRead();
+}
+
+async function loadAdminNotifications() {
+    const box = document.getElementById("adminNotificationsBox");
+
+    try {
+        const data = await api("/users/admin-notifications");
+        const notifications = data.notifications || [];
+
+        if (!notifications.length) {
+            box.innerHTML = `
+                <div class="card">
+                    <div class="card-title">لا توجد إشعارات</div>
+                    <div class="card-note">لا يوجد أي إشعار محفوظ حالياً.</div>
+                </div>
+            `;
+            return;
+        }
+
+        box.innerHTML = notifications.map(item => `
+            <div class="card" style="margin-bottom:12px;">
+                <div class="card-title">${safeText(item.title || "إشعار")}</div>
+                <div style="white-space:pre-wrap;color:#e5e7eb;margin-top:8px;">
+                    ${safeText(item.message || "")}
+                </div>
+                <div class="card-note">🕒 ${safeText(item.time || "غير متوفر")}</div>
+            </div>
+        `).join("");
+
+    } catch (e) {
+        box.innerHTML = `<div class="msg error">${safeText(e.message)}</div>`;
+    }
+}
+
+async function clearAdminNotifications() {
+    if (!confirm("هل تريد مسح جميع الإشعارات الحالية؟")) return;
+
+    try {
+        await api("/users/admin-notifications-clear", {
+            method: "POST",
+            body: JSON.stringify({})
+        });
+
+        await loadAdminNotifications();
+        await updateAdminNotificationsCount();
+
+    } catch (e) {
+        alert(e.message);
+    }
+}
+
+async function markAdminNotificationsRead() {
+    try {
+        await api("/users/admin-notifications-read", {
+            method: "POST",
+            body: JSON.stringify({})
+        });
+
+        await updateAdminNotificationsCount();
+
+    } catch (e) {
+        console.log("mark notifications read error:", e.message);
+    }
+}
+
 function openModal(title, content) {
     document.getElementById("modalTitle").innerText = title;
     document.getElementById("modalContent").innerHTML = content;
@@ -2042,6 +2157,8 @@ window.onload = async function () {
             await refreshAll();
             await updateSupportRequestsCount();
             startSupportCountPolling();
+            await updateAdminNotificationsCount();
+            startAdminNotificationsPolling();
         } catch (e) {
             localStorage.removeItem("token");
             location.reload();
