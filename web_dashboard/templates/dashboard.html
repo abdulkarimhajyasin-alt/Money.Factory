@@ -847,6 +847,9 @@ async function login() {
 function logout() {
     localStorage.removeItem("token");
     location.reload();
+    if (dashboardAutoRefreshTimer) {
+    clearInterval(dashboardAutoRefreshTimer);
+        }
 }
 
 function setText(id, value) {
@@ -873,6 +876,7 @@ function showSection(name) {
 
 async function refreshAll() {
     await loadDashboard();
+    startDashboardAutoRefresh();
     await updateSupportRequestsCount();
     startSupportCountPolling();
     await updateAdminNotificationsCount();
@@ -2165,6 +2169,26 @@ window.onload = async function () {
         }
     }
 };
+
+
+let dashboardAutoRefreshTimer = null;
+
+function startDashboardAutoRefresh() {
+    if (dashboardAutoRefreshTimer) {
+        clearInterval(dashboardAutoRefreshTimer);
+    }
+
+    dashboardAutoRefreshTimer = setInterval(async () => {
+        try {
+            if (!token()) return;
+
+            await refreshAll();
+
+        } catch (e) {
+            console.log("auto refresh error:", e.message);
+        }
+    }, 2000); // ⏱ كل 2 ثانية (يمكن تغييرها إلى 1000)
+}
 </script>
 
 </body>
