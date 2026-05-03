@@ -73,6 +73,7 @@ referral_bonus_paid = {}    # username -> True/False
 capital_withdraw_requests = {}   # user_id -> بيانات طلب سحب رأس المال
 stopped_profit_users = {}        # username -> True/False
 support_waiting_reply = {}       # username -> True/False
+support_chat_messages = {}
 
 support_employees_enabled = False   # تشغيل/إيقاف موظفي الدعم
 support_claims = {}                 # username -> {"employee_id": int, "expires_at": timestamp}
@@ -605,6 +606,7 @@ def load_data():
     global user_identity_photos
     global user_timezone
     global pending_profit_capital_activation
+    global support_chat_messages
 
     data = db_get("data", {})
 
@@ -638,6 +640,7 @@ def load_data():
 
     stopped_profit_users = data.get("stopped_profit_users", {})
     support_waiting_reply = data.get("support_waiting_reply", {})
+    support_chat_messages = data.get("support_chat_messages", {})
     support_employees_enabled = data.get("support_employees_enabled", False)
     support_claims = data.get("support_claims", {})
     support_message_copies = data.get("support_message_copies", {})
@@ -692,6 +695,7 @@ def save_data():
         "capital_withdraw_requests": {str(k): v for k, v in capital_withdraw_requests.items()},
         "stopped_profit_users": stopped_profit_users,
         "support_waiting_reply": support_waiting_reply,
+        "support_chat_messages": support_chat_messages,
         "support_employees_enabled": support_employees_enabled,
         "support_claims": support_claims,
         "support_message_copies": support_message_copies,
@@ -3630,18 +3634,20 @@ async def go_back_from_data_entry_state(user_id, context):
 # معالجة الرسائل
 # =========================
 def add_support_reply_to_web_chat(username, message):
-    data = db_get("data", {})
+    global support_chat_messages
 
-    support_chat_messages = data.get("support_chat_messages", {})
-    support_chat_messages.setdefault(username, []).append({
-        "sender": "support",
-        "message": message,
-        "time": now_str(),
-        "read": False
-    })
+    try:
+        support_chat_messages.setdefault(username, []).append({
+            "sender": "support",
+            "message": message,
+            "time": now_str(),
+            "read": False
+        })
 
-    data["support_chat_messages"] = support_chat_messages
-    db_set("data", data)
+        save_data()
+
+    except Exception as e:
+        print(f"[ADD_SUPPORT_REPLY_TO_WEB_CHAT_ERROR] {e}")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
