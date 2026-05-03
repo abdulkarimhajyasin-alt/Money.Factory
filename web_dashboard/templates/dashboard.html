@@ -1257,6 +1257,9 @@ async function openUserDetails(username) {
                         Telegram ID: ${safeText(user.telegram_id)} |
                         Referrer: ${safeText(user.referrer)} |
                         Children: ${safeText(user.children_count)}
+                        <button class="btn-blue" onclick="openUserSupportChatFromDetails('${jsSafe(user.username || username)}')">
+                           📩 إرسال رسالة
+                        </button>
                     </div>
                 </div>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;">
@@ -1790,6 +1793,26 @@ async function openSupportUser(username) {
     }
 
     await renderAdminSupportChat(username);
+}
+
+async function openUserSupportChatFromDetails(username) {
+    if (!username) {
+        alert("لا يوجد مستخدم محدد");
+        return;
+    }
+
+    await renderAdminSupportChat(username);
+
+    setTimeout(() => {
+        const chatBox = document.getElementById("adminSupportChatPanel");
+
+        if (chatBox) {
+            chatBox.scrollIntoView({
+                behavior: "smooth",
+                block: "start"
+            });
+        }
+    }, 200);
 }
 
 
