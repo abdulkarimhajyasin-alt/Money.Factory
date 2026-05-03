@@ -12,6 +12,9 @@ from web_dashboard.database import get_web_db_connection, release_web_db_connect
 from web_dashboard.services.storage_service import web_db_get as db_get
 from web_dashboard.services.users_service import build_users_list, search_users
 
+ADMIN_IDS = [5685737658]
+ADMIN_ID = ADMIN_IDS[0]
+
 
 router = APIRouter()
 
@@ -831,7 +834,8 @@ def send_telegram_message(chat_id: int, text: str):
             f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
             json={
                 "chat_id": int(chat_id),
-                "text": text
+                "text": text,
+                "parse_mode": "HTML"
             },
             timeout=10
         )
@@ -949,6 +953,20 @@ def admin_support_reply(
             telegram_id,
             f"📩 رد من الدعم:\n\n{message}"
         )
+
+    admin_notify_text = (
+          "📨 <b>تم الرد على رسالة دعم من داشبورد الأدمن</b>\n\n"
+          f"👤 <b>المستخدم:</b> {username}\n"
+          f"🆔 <b>Telegram ID:</b> {telegram_id or 'غير متاح'}\n"
+          f"🕒 <b>الوقت:</b> {now_str()}\n\n"
+          f"💬 <b>نص الرد:</b>\n{message}\n\n"
+          f"📌 <b>الحالة:</b> تم إغلاق طلب الدعم من قائمة الانتظار"
+    )
+
+    send_telegram_message(
+       ADMIN_ID,
+       admin_notify_text
+    )    
 
     return {
         "success": True,
