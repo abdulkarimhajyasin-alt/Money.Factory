@@ -913,10 +913,6 @@ async function refreshAll() {
         await loadFinancial();
     }
 
-    if (!document.getElementById("supportSection").classList.contains("hidden")) {
-    await loadSupportRequests();
-    }
-
     if (currentDetailsUser) {
         await openUserDetails(currentDetailsUser);
     }
@@ -1730,10 +1726,6 @@ function startSupportCountPolling() {
     supportCountTimer = setInterval(async () => {
         if (token()) {
             await updateSupportRequestsCount();
-
-            if (!document.getElementById("supportSection").classList.contains("hidden")) {
-                await loadSupportRequests();
-            }
         }
     }, 2000);
 }
