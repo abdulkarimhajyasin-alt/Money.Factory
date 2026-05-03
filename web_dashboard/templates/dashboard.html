@@ -1795,34 +1795,52 @@ function botStatusModal() {
     `);
 }
 
-async function deletedAccountsModal() {
-    openModal("🗑️ سجل الحسابات المحذوفة", `<div id="deletedAccountsBox">جار التحميل...</div>`);
+async function openDeletedAccountsModal() {
+    openModal("🗑️ سجل الحسابات المحذوفة", `
+        <div id="deletedAccountsBox">جار تحميل السجل...</div>
+    `);
 
     try {
         const data = await api("/users/deleted-accounts");
-
         const logs = data.logs || [];
 
+        const box = document.getElementById("deletedAccountsBox");
+
         if (!logs.length) {
-            document.getElementById("deletedAccountsBox").innerHTML =
-                "<div class='msg'>لا يوجد حسابات محذوفة</div>";
+            box.innerHTML = `
+                <div class="card">
+                    <div class="card-title">لا توجد حسابات محذوفة</div>
+                    <div class="card-note">لم يتم تسجيل أي عملية حذف حتى الآن.</div>
+                </div>
+            `;
             return;
         }
 
-        document.getElementById("deletedAccountsBox").innerHTML = logs.map(item => `
-            <div class="card">
-                <strong>👤 ${item.username}</strong><br>
-                🆔 ${item.telegram_id || "-"}<br>
-                💰 الرصيد: ${item.balance_before_delete}$<br>
-                📥 رأس المال: ${item.capital_before_delete}$<br>
-                📦 الباقة: ${item.plan_before_delete}<br>
-                🕒 ${item.deleted_at}
+        box.innerHTML = logs.map(item => `
+            <div class="card" style="margin-bottom:12px;">
+                <div class="card-title">👤 ${safeText(item.username || "غير متوفر")}</div>
+
+                <div>🆔 Telegram ID: ${safeText(item.telegram_id || "غير متوفر")}</div>
+                <div>👤 الاسم والكنية: ${safeText(item.full_name || "غير متوفر")}</div>
+                <div>🏠 الإقامة: ${safeText(item.residence || "غير متوفر")}</div>
+                <div>🪪 التوثيق: ${safeText(item.verification_text || "غير متوفر")}</div>
+                <div>📌 الحالة قبل الحذف: ${safeText(item.status_before_delete || "غير متوفر")}</div>
+                <div>📦 الباقة قبل الحذف: ${safeText(item.plan_before_delete || "غير متوفر")}</div>
+                <div>💰 رأس المال: ${money(item.capital_before_delete || 0)}</div>
+                <div>📈 الرصيد: ${money(item.balance_before_delete || 0)}</div>
+                <div>💵 الأرباح: ${money(item.profit_only_before_delete || 0)}</div>
+                <div>🕒 وقت الحذف: ${safeText(item.deleted_at || "غير متوفر")}</div>
+
+                <div style="margin-top:10px;color:#bae6fd;">📋 الطلبات المعلقة وقت الحذف:</div>
+                <div style="white-space:pre-wrap;color:#cbd5e1;">
+                    ${safeText(item.pending_requests_summary || "غير متوفر")}
+                </div>
             </div>
         `).join("");
 
     } catch (e) {
         document.getElementById("deletedAccountsBox").innerHTML =
-            `<div class="msg error">${e.message}</div>`;
+            `<div class="msg error">${safeText(e.message)}</div>`;
     }
 }
 

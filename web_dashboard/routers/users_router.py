@@ -1158,3 +1158,17 @@ def get_deleted_accounts(admin: str = Depends(get_current_admin)):
     return {
         "logs": logs[::-1]  # أحدث أولاً
     }
+
+@router.get("/deleted-accounts")
+def get_deleted_accounts(admin: str = Depends(get_current_admin)):
+    users, data = load_storage()
+
+    logs = data.get("deleted_accounts_log", [])
+
+    if not isinstance(logs, list):
+        logs = []
+
+    return {
+        "count": len(logs),
+        "logs": list(reversed(logs))
+    }
