@@ -683,6 +683,9 @@
     <div class="support-input-row">
         <textarea id="inlineSupportMessage" rows="2" placeholder="اكتب رسالتك هنا..."></textarea>
         <button onclick="submitInlineSupport()">إرسال</button>
+        <input id="userSupportMediaFile" type="file">
+        <input id="userSupportMediaCaption" placeholder="نص مرفق مع الصورة/الملف - اختياري">
+        <button onclick="submitUserSupportMedia()">إرسال صورة/ملف</button>
     </div>
 
 </div>
@@ -1441,6 +1444,46 @@ async function submitInlineSupport() {
     }
 }
 
+async function submitUserSupportMedia() {
+    const fileInput = document.getElementById("userSupportMediaFile");
+    const captionInput = document.getElementById("userSupportMediaCaption");
+
+    if (!fileInput || !fileInput.files.length) {
+        alert("اختر صورة أو ملف أولاً");
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append("caption", captionInput ? captionInput.value.trim() : "");
+    formData.append("file", fileInput.files[0]);
+
+    try {
+        const response = await fetch("/user-panel/support-media", {
+            method: "POST",
+            headers: {
+                "Authorization": "Bearer " + token()
+            },
+            body: formData
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+            throw new Error(result.detail || "فشل إرسال الملف");
+        }
+
+        fileInput.value = "";
+        if (captionInput) captionInput.value = "";
+
+        await loadSupportMessages();
+
+        alert("✅ تم إرسال الصورة/الملف إلى الدعم");
+
+    } catch (e) {
+        alert(e.message);
+    }
+}
+
 async function markSupportMessagesRead() {
     try {
         await api("/user-panel/support-mark-read", {
@@ -1514,12 +1557,31 @@ async function loadSupportMessages() {
             return;
         }
 
-        list.innerHTML = messages.map(msg => `
-            <div class="support-message ${msg.sender === "support" ? "support" : "user"}">
-                ${escapeHtml(msg.message)}
-                <span class="support-message-time">${escapeHtml(msg.time || "")}</span>
-            </div>
-        `).join("");
+        list.innerHTML = messages.map(msg => {
+    let content = "";
+
+    if (msg.type === "photo") {
+        content = `
+            <div>🖼️ صورة مرفقة</div>
+            <div>${escapeHtml(msg.message || msg.caption || "")}</div>
+        `;
+    } else if (msg.type === "document") {
+        content = `
+            <div>📄 ملف مرفق</div>
+            <div>${escapeHtml(msg.filename || "ملف")}</div>
+            <div>${escapeHtml(msg.message || msg.caption || "")}</div>
+        `;
+    } else {
+        content = escapeHtml(msg.message || msg.text || "");
+    }
+
+    return `
+        <div class="support-message ${msg.sender === "support" ? "support" : "user"}">
+            ${content}
+            <span class="support-message-time">${escapeHtml(msg.time || "")}</span>
+        </div>
+    `;
+}).join("");
 
         list.scrollTop = list.scrollHeight;
 

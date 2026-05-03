@@ -4,7 +4,7 @@ import requests
 from web_dashboard.config import BOT_TOKEN
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
 from pydantic import BaseModel
 
 from web_dashboard.auth import get_current_admin
@@ -847,6 +847,53 @@ def send_telegram_message(chat_id: int, text: str):
         print(f"[ADMIN_WEB_SUPPORT_SEND_ERROR] {e}")
         return False
 
+def send_telegram_media(chat_id: int, file_bytes: bytes, filename: str, caption: str = ""):
+    if not BOT_TOKEN or not chat_id:
+        return None
+
+    mime_name = filename.lower()
+
+    if mime_name.endswith((".jpg", ".jpeg", ".png", ".webp")):
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
+        files = {
+            "photo": (filename, file_bytes)
+        }
+        data = {
+            "chat_id": int(chat_id),
+            "caption": caption or ""
+        }
+        media_type = "photo"
+    else:
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument"
+        files = {
+            "document": (filename, file_bytes)
+        }
+        data = {
+            "chat_id": int(chat_id),
+            "caption": caption or ""
+        }
+        media_type = "document"
+
+    response = requests.post(url, data=data, files=files, timeout=30)
+    result = response.json()
+
+    if not result.get("ok"):
+        raise HTTPException(status_code=500, detail="فشل إرسال الملف عبر تيليغرام")
+
+    message = result.get("result", {})
+
+    if media_type == "photo":
+        photos = message.get("photo", [])
+        file_id = photos[-1]["file_id"] if photos else None
+    else:
+        file_id = message.get("document", {}).get("file_id")
+
+    return {
+        "type": media_type,
+        "file_id": file_id,
+        "filename": filename
+    }
+
 
 @router.get("/support-requests")
 def get_support_requests(admin: str = Depends(get_current_admin)):
@@ -989,6 +1036,69 @@ def admin_support_reply(
         "success": True,
         "telegram_sent": telegram_sent
     }
+
+@router.post("/support-reply-media")
+async def admin_support_reply_media(
+    username: str = Form(...),
+    caption: str = Form(""),
+    file: UploadFile = File(...),
+    admin: str = Depends(get_current_admin)
+):
+    users, data = load_storage()
+
+    ensure_user_exists(username, users)
+
+    telegram_id = get_saved_telegram_id(data, username)
+
+    if not telegram_id:
+        raise HTTPException(status_code=400, detail="لا يوجد Telegram ID لهذا المستخدم")
+
+    file_bytes = await file.read()
+
+    media_result = send_telegram_media(
+        chat_id=telegram_id,
+        file_bytes=file_bytes,
+        filename=file.filename,
+        caption=f"📩 رد من الدعم:\n\n{caption}" if caption else "📩 رد من الدعم"
+    )
+
+    support_chat_messages = data.get("support_chat_messages", {})
+
+    support_chat_messages.setdefault(username, []).append({
+        "sender": "support",
+        "type": media_result["type"],
+        "file_id": media_result["file_id"],
+        "filename": media_result["filename"],
+        "message": caption,
+        "time": now_str(),
+        "read": False
+    })
+
+    data["support_chat_messages"] = support_chat_messages
+
+    support_waiting_reply = data.get("support_waiting_reply", {})
+    support_waiting_reply[username] = False
+    data["support_waiting_reply"] = support_waiting_reply
+
+    support_opened_at = data.get("support_opened_at", {})
+    support_opened_at[username] = time.time()
+    data["support_opened_at"] = support_opened_at
+
+    add_transaction(
+        data,
+        username,
+        "web_admin_support_reply_media",
+        0,
+        f"رد الأدمن بملف/صورة من لوحة الويب: {caption[:80]}"
+    )
+
+    save_data(data)
+
+    return {
+        "success": True,
+        "media_type": media_result["type"]
+    }
+
 
 def send_telegram_message(chat_id: int, text: str):
     if not BOT_TOKEN or not chat_id:

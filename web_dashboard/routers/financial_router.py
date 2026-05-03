@@ -96,6 +96,53 @@ def send_telegram(chat_id, text):
         return False
 
 
+def send_telegram_photo(chat_id, file_bytes, caption=""):
+    if not BOT_TOKEN or not chat_id:
+        return False
+
+    try:
+        response = requests.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto",
+            data={
+                "chat_id": int(chat_id),
+                "caption": caption or ""
+            },
+            files={
+                "photo": ("image.jpg", file_bytes)
+            },
+            timeout=30
+        )
+
+        return bool(response.json().get("ok"))
+
+    except Exception as e:
+        print(f"[SEND_TELEGRAM_PHOTO_ERROR] {e}")
+        return False
+
+
+def send_telegram_document(chat_id, file_bytes, filename, caption=""):
+    if not BOT_TOKEN or not chat_id:
+        return False
+
+    try:
+        response = requests.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument",
+            data={
+                "chat_id": int(chat_id),
+                "caption": caption or ""
+            },
+            files={
+                "document": (filename, file_bytes)
+            },
+            timeout=30
+        )
+
+        return bool(response.json().get("ok"))
+
+    except Exception as e:
+        print(f"[SEND_TELEGRAM_DOCUMENT_ERROR] {e}")
+        return False
+
 def send_telegram_media(chat_id, file_bytes, filename, caption=""):
     if not BOT_TOKEN or not chat_id:
         return False
@@ -550,6 +597,37 @@ def broadcast(request: MessageRequest, admin: str = Depends(get_current_admin)):
         if send_telegram(uid, msg):
             success += 1
         else:
+            failed += 1
+
+    return {
+        "success": True,
+        "sent": success,
+        "failed": failed
+    }
+from fastapi import UploadFile, File, Form
+
+@router.post("/broadcast-media")
+async def broadcast_media(
+    caption: str = Form(""),
+    file: UploadFile = File(...),
+    admin: str = Depends(get_current_admin)
+):
+    chat_ids = db_get("chat_ids", [])
+
+    success = 0
+    failed = 0
+
+    file_bytes = await file.read()
+
+    for uid in chat_ids:
+        try:
+            if file.content_type.startswith("image"):
+                send_telegram_photo(uid, file_bytes, caption)
+            else:
+                send_telegram_document(uid, file_bytes, file.filename, caption)
+
+            success += 1
+        except:
             failed += 1
 
     return {

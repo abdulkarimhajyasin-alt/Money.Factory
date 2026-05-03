@@ -4,7 +4,7 @@ import requests
 from datetime import datetime
 from web_dashboard.config import BOT_TOKEN
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
 
 from web_dashboard.database import get_web_db_connection, release_web_db_connection
@@ -83,6 +83,104 @@ def send_telegram_message(chat_id: int, text: str, reply_markup=None):
         print(f"[TELEGRAM_SEND_ERROR] {e}")
         return False
 
+
+def send_telegram_photo(chat_id, file_bytes, caption=""):
+    if not BOT_TOKEN or not chat_id:
+        return False
+
+    try:
+        response = requests.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto",
+            data={
+                "chat_id": int(chat_id),
+                "caption": caption or "",
+                "parse_mode": "HTML"
+            },
+            files={
+                "photo": ("image.jpg", file_bytes)
+            },
+            timeout=30
+        )
+
+        return bool(response.json().get("ok"))
+
+    except Exception as e:
+        print(f"[SEND_TELEGRAM_PHOTO_ERROR] {e}")
+        return False
+
+
+def send_telegram_document(chat_id, file_bytes, filename, caption=""):
+    if not BOT_TOKEN or not chat_id:
+        return False
+
+    try:
+        response = requests.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument",
+            data={
+                "chat_id": int(chat_id),
+                "caption": caption or "",
+                "parse_mode": "HTML"
+            },
+            files={
+                "document": (filename, file_bytes)
+            },
+            timeout=30
+        )
+
+        return bool(response.json().get("ok"))
+
+    except Exception as e:
+        print(f"[SEND_TELEGRAM_DOCUMENT_ERROR] {e}")
+        return False
+
+def send_telegram_media_to_admin(file_bytes: bytes, filename: str, caption: str = ""):
+    if not BOT_TOKEN:
+        return None
+
+    mime_name = filename.lower()
+
+    if mime_name.endswith((".jpg", ".jpeg", ".png", ".webp")):
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
+        files = {
+            "photo": (filename, file_bytes)
+        }
+        data = {
+            "chat_id": ADMIN_ID,
+            "caption": caption or "",
+            "parse_mode": "HTML"
+        }
+        media_type = "photo"
+    else:
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument"
+        files = {
+            "document": (filename, file_bytes)
+        }
+        data = {
+            "chat_id": ADMIN_ID,
+            "caption": caption or "",
+            "parse_mode": "HTML"
+        }
+        media_type = "document"
+
+    response = requests.post(url, data=data, files=files, timeout=30)
+    result = response.json()
+
+    if not result.get("ok"):
+        raise HTTPException(status_code=500, detail="فشل إرسال الملف إلى الدعم")
+
+    message = result.get("result", {})
+
+    if media_type == "photo":
+        photos = message.get("photo", [])
+        file_id = photos[-1]["file_id"] if photos else None
+    else:
+        file_id = message.get("document", {}).get("file_id")
+
+    return {
+        "type": media_type,
+        "file_id": file_id,
+        "filename": filename
+    }
 
 def db_set(key, value):
     conn = None
@@ -582,6 +680,82 @@ def send_support_message(
         "telegram_sent": sent
     }
 
+@router.post("/support-media")
+async def send_support_media(
+    caption: str = Form(""),
+    file: UploadFile = File(...),
+    username: str = Depends(get_current_user)
+):
+    users, data = load_storage()
+
+    if data.get("support_waiting_reply", {}).get(username, False):
+        raise HTTPException(
+            status_code=400,
+            detail="لديك رسالة دعم قيد الانتظار. يرجى انتظار رد الإدارة قبل إرسال رسالة جديدة."
+        )
+
+    telegram_id = get_telegram_id(data, username)
+    full_name = data.get("user_full_name", {}).get(username, "غير متوفر")
+    residence = data.get("user_residence", {}).get(username, "غير متوفر")
+    plan = data.get("user_plans", {}).get(username, "NONE")
+    balance = get_balance(data, username)
+    capital = get_capital(data, username)
+    profit = get_profit_only(data, username)
+
+    file_bytes = await file.read()
+
+    admin_caption = (
+        "📩 <b>رسالة دعم جديدة</b>\n\n"
+        "🌐 <b>المصدر:</b> لوحة المستخدم Web\n"
+        f"👤 <b>Username:</b> {username}\n"
+        f"🧾 <b>الاسم:</b> {full_name}\n"
+        f"🌍 <b>الدولة:</b> {residence}\n"
+        f"🆔 <b>Telegram ID:</b> {telegram_id or 'غير متاح'}\n"
+        f"📦 <b>الباقة:</b> {plan}\n"
+        f"💰 <b>الرصيد:</b> {balance}$\n"
+        f"📥 <b>رأس المال:</b> {capital}$\n"
+        f"💵 <b>الأرباح:</b> {profit}$\n"
+        f"🕒 <b>الوقت:</b> {now_str()}\n\n"
+        f"📝 <b>النص المرفق:</b>\n{caption or 'بدون نص'}"
+    )
+
+    media_result = send_telegram_media_to_admin(
+        file_bytes=file_bytes,
+        filename=file.filename,
+        caption=admin_caption
+    )
+
+    support_chat_messages = data.get("support_chat_messages", {})
+    support_chat_messages.setdefault(username, []).append({
+        "sender": "user",
+        "type": media_result["type"],
+        "file_id": media_result["file_id"],
+        "filename": media_result["filename"],
+        "message": caption,
+        "time": now_str(),
+        "read": True
+    })
+    data["support_chat_messages"] = support_chat_messages
+
+    support_waiting_reply = data.get("support_waiting_reply", {})
+    support_waiting_reply[username] = True
+    data["support_waiting_reply"] = support_waiting_reply
+
+    add_transaction(
+        data,
+        username,
+        "support_media_sent",
+        0,
+        f"أرسل المستخدم صورة/ملف دعم من لوحة الويب: {caption[:80]}"
+    )
+
+    save_data(data)
+
+    return {
+        "success": True,
+        "media_type": media_result["type"]
+    }
+
 
 @router.post("/deposit-request")
 def create_deposit_request(
@@ -954,3 +1128,32 @@ def delete_my_account(
         "success": True,
         "message": "Account deleted successfully"
     }
+
+@router.post("/support/send-media")
+async def send_support_media(
+    user_id: int = Form(...),
+    caption: str = Form(""),
+    file: UploadFile = File(...),
+    username: str = Depends(get_current_user)
+):
+    file_bytes = await file.read()
+
+    try:
+        if file.content_type.startswith("image"):
+            send_telegram_photo(
+                user_id,
+                file_bytes,
+                f"📩 رد من الدعم:\n\n{caption}"
+            )
+        else:
+            send_telegram_document(
+                user_id,
+                file_bytes,
+                file.filename,
+                f"📩 رد من الدعم:\n\n{caption}"
+            )
+
+        return {"success": True}
+
+    except Exception as e:
+        return {"success": False, "error": str(e)}
