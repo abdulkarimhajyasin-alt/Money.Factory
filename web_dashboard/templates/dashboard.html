@@ -568,10 +568,6 @@
         <span>📨</span>إرسال رسالة حسب الباقة
     </button>
 
-    <button class="action-card" onclick="usersFilterModal()">
-        <span>📂</span>فلترة المستخدمين
-    </button>
-
     <button class="action-card" onclick="deleteUserModal()">
         <span>🗑️</span>حذف مستخدم
     </button>
@@ -2160,12 +2156,53 @@ function usersFilterModal() {
     `);
 }
 
-function deleteUserModal() {
-    openModal("🗑️ حذف مستخدم", `
-        <p style="color:#fecaca;">تحذير: سيتم حذف المستخدم بالكامل من النظام.</p>
-        <input id="deleteUsernameInput" placeholder="Username">
-        <button class="btn-red" onclick="confirmDeleteUser()">حذف</button>
+function planMessageModal() {
+    openModal("📨 إرسال رسالة حسب الباقة", `
+        <select id="planMessagePlan">
+            <option value="">اختر الباقة</option>
+            <option value="الباقة الفضية">الباقة الفضية</option>
+            <option value="الباقة الذهبية">الباقة الذهبية</option>
+            <option value="باقة VIP">باقة VIP</option>
+        </select>
+
+        <textarea id="planMessageText" rows="6" placeholder="اكتب الرسالة هنا..."></textarea>
+
+        <button class="btn-blue" onclick="sendPlanMessage()">إرسال</button>
     `);
+}
+
+async function sendPlanMessage() {
+    const plan = document.getElementById("planMessagePlan").value;
+    const message = document.getElementById("planMessageText").value.trim();
+
+    if (!plan) {
+        alert("اختر الباقة أولاً");
+        return;
+    }
+
+    if (!message) {
+        alert("لا يمكن إرسال رسالة فارغة");
+        return;
+    }
+
+    if (!confirm(`هل تريد إرسال الرسالة إلى مشتركي ${plan}؟`)) return;
+
+    try {
+        const result = await api("/financial/message-by-plan", {
+            method: "POST",
+            body: JSON.stringify({
+                plan: plan,
+                message: `📨 رسالة من الإدارة لمشتركي ${plan}:\n\n${message}`
+            })
+        });
+
+        alert(`✅ تم الإرسال بنجاح\n\n📨 تم الإرسال إلى: ${result.sent || 0} مستخدم`);
+
+        closeModal();
+
+    } catch (e) {
+        alert(e.message);
+    }
 }
 
 async function confirmDeleteUser() {
