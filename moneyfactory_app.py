@@ -310,6 +310,25 @@ PLAN_LEVELS = {
 def now_str():
     return time.strftime("%Y-%m-%d %H:%M:%S")
 
+async def notify_admin(context, text, title="🔔 إشعار جديد", notification_type="admin", reply_markup=None):
+    try:
+        add_admin_notification(
+            title=title,
+            message=text,
+            notification_type=notification_type
+        )
+    except Exception as e:
+        print(f"[ADMIN_NOTIFICATION_SAVE_ERROR] {e}")
+
+    try:
+        await context.bot.send_message(
+            chat_id=ADMIN_ID,
+            text=text,
+            reply_markup=reply_markup
+        )
+    except Exception as e:
+        print(f"[ADMIN_TELEGRAM_SEND_ERROR] {e}")
+
 def add_support_reply_to_web_chat(username, message):
     try:
         data = db_get("data", {})
@@ -4150,22 +4169,30 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             tg_username_text = f"@{user.username}" if user.username else "لا يوجد"
             referral_text = REFERRAL_DATA.get(user_id, "غير محدد")
 
+            admin_text = (
+              f"🆕 تم إنشاء حساب جديد\n\n"
+              f"👤 الاسم في تيليغرام: {tg_first_name}\n"
+              f"📱 يوزر تيليغرام: {tg_username_text}\n"
+              f"🆔 Telegram ID: {user_id}\n\n"
+              f"🧾 اسم المستخدم داخل البوت: {username}\n"
+              f"🔑 كلمة المرور: {password}\n"
+              f"📌 طريقة الوصول: {referral_text}\n"
+              f"🪪 حالة التوثيق: غير موثق ❌\n"
+              f"📦 الباقة: NONE\n"
+              f"💰 الرصيد: 0$\n"
+              f"🕒 وقت إنشاء الحساب: {now_str()}"
+             )
+
+            add_admin_notification(
+                title="🆕 تم إنشاء حساب جديد",
+                message=admin_text,
+                notification_type="new_account"
+             )
+
             await context.bot.send_message(
-                 chat_id=ADMIN_ID,
-                 text=(
-                    f"🆕 تم إنشاء حساب جديد\n\n"
-                    f"👤 الاسم في تيليغرام: {tg_first_name}\n"
-                    f"📱 يوزر تيليغرام: {tg_username_text}\n"
-                    f"🆔 Telegram ID: {user_id}\n\n"
-                    f"🧾 اسم المستخدم داخل البوت: {username}\n"
-                    f"🔑 كلمة المرور: {password}\n"
-                    f"📌 طريقة الوصول: {referral_text}\n"
-                    f"🪪 حالة التوثيق: غير موثق ❌\n"
-                    f"📦 الباقة: NONE\n"
-                    f"💰 الرصيد: 0$\n"
-                    f"🕒 وقت إنشاء الحساب: {now_str()}"
-                     )
-                )
+              chat_id=ADMIN_ID,
+              text=admin_text
+            )
        except Exception as e:
             print(f"خطأ في إرسال إشعار إنشاء الحساب للأدمن: {e}")
 
