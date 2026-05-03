@@ -519,6 +519,7 @@
                     <span class="badge green">Live</span>
                     <span id="subscriptionStatusBadge" class="badge">الاشتراك: ---</span>
                     <span id="botMaintenanceBadge" class="badge">البوت: ---</span>
+                    <span id="supportEmployeesBadge" class="badge">موظفو الدعم: ---</span>
                 </div>
             </div>
 
@@ -564,20 +565,13 @@
         <span>📂</span>فلترة المستخدمين
     </button>
 
-    <button class="action-card" onclick="advancedStatsModal()">
-        <span>📈</span>إحصائيات متقدمة
-    </button>
-
-    <button class="action-card" onclick="searchUserModal()">
-        <span>🔍</span>بحث عن مستخدم
-    </button>
-
     <button class="action-card" onclick="deleteUserModal()">
         <span>🗑️</span>حذف مستخدم
     </button>
 
-    <button class="action-card" onclick="toggleSupportEmployees()">
-        <span>👨‍💼</span>تشغيل موظفي الدعم
+    <button id="supportEmployeesToggleBtn" class="action-card" onclick="toggleSupportEmployees()">
+        <span>👨‍💼</span>
+        <strong id="supportEmployeesToggleText">موظفو الدعم</strong>
     </button>
 </div>
 
@@ -898,6 +892,7 @@ async function loadDashboard() {
     const d = await api("/dashboard/summary");
     updateBotMaintenanceBadge(d.bot_maintenance_mode);
     updateSubscriptionStatusBadge(d.subscriptions_open);
+    updateSupportEmployeesBadge(d.support_employees_enabled);
 
     setText("total_users", d.total_users || 0);
     setText("verified_users", d.verified_users || 0);
@@ -945,6 +940,24 @@ function updateBotMaintenanceBadge(isMaintenance) {
     } else {
         badge.innerText = "البوت يعمل ✅";
         badge.className = "badge green";
+    }
+}
+
+function updateSupportEmployeesBadge(isEnabled) {
+    const badge = document.getElementById("supportEmployeesBadge");
+    if (!badge) return;
+
+    if (isEnabled) {
+        badge.innerText = "موظفو الدعم مفعّلون ✅";
+        badge.className = "badge green";
+    } else {
+        badge.innerText = "موظفو الدعم متوقفون ⛔";
+        badge.className = "badge red";
+    }
+
+    const btnText = document.getElementById("supportEmployeesToggleText");
+    if (btnText) {
+        btnText.innerText = isEnabled ? "إيقاف موظفي الدعم" : "تشغيل موظفي الدعم";
     }
 }
 
@@ -1831,62 +1844,75 @@ async function openDeletedAccountsModal() {
 function broadcastModal() {
     openModal("📢 إرسال رسالة للجميع", `
         <textarea id="broadcastText" rows="6" placeholder="اكتب الرسالة التي تريد إرسالها لجميع المستخدمين"></textarea>
-        <button class="btn-blue" onclick="alert('يحتاج Backend API للإرسال الجماعي')">إرسال</button>
+        <button class="btn-blue" onclick="sendBroadcastMessage()">إرسال</button>
     `);
 }
 
-function planMessageModal() {
-    openModal("📨 إرسال رسالة حسب الباقة", `
-        <select id="planMsgPlan">
-            <option value="الباقة الفضية">الباقة الفضية</option>
-            <option value="الباقة الذهبية">الباقة الذهبية</option>
-            <option value="باقة VIP">باقة VIP</option>
-            <option value="NONE">بدون باقة</option>
-        </select>
+async function sendBroadcastMessage() {
+    const message = document.getElementById("broadcastText").value.trim();
 
-        <textarea id="planMsgText" rows="6" placeholder="اكتب الرسالة"></textarea>
+    if (!message) {
+        alert("لا يمكن إرسال رسالة فارغة");
+        return;
+    }
 
-        <button class="btn-blue" onclick="alert('يحتاج Backend API للإرسال حسب الباقة')">إرسال</button>
-    `);
+    if (!confirm("هل تريد إرسال هذه الرسالة إلى جميع المستخدمين؟")) return;
+
+    try {
+        const result = await api("/financial/broadcast", {
+            method: "POST",
+            body: JSON.stringify({
+                message: message
+            })
+        });
+
+        alert(`✅ تم الإرسال بنجاح\n\n📨 الناجح: ${result.sent}\n❌ الفاشل: ${result.failed}`);
+
+        closeModal();
+
+    } catch (e) {
+        alert(e.message);
+    }
+}
+
+async function sendMessageByPlan() {
+    const plan = document.getElementById("planName").value;
+    const message = document.getElementById("planMessage").value.trim();
+
+    if (!plan) {
+        alert("اختر الباقة أولاً");
+        return;
+    }
+
+    if (!message) {
+        alert("لا يمكن إرسال رسالة فارغة");
+        return;
+    }
+
+    if (!confirm(`هل تريد إرسال الرسالة إلى مشتركي ${plan}؟`)) return;
+
+    try {
+        const result = await api("/financial/message-by-plan", {
+            method: "POST",
+            body: JSON.stringify({
+                plan: plan,
+                message: `📨 رسالة من الإدارة لمشتركي ${plan}:\n\n${message}`
+             })
+        });
+
+        alert(`✅ تم الإرسال\n\n📨 تم الإرسال إلى: ${result.sent} مستخدم`);
+
+        closeModal();
+
+    } catch (e) {
+        alert(e.message);
+    }
 }
 
 function usersFilterModal() {
     openModal("📂 فلترة المستخدمين", `
         <p>الفلاتر موجودة بالفعل داخل صفحة Users Tree:</p>
         <button class="btn-blue" onclick="closeModal(); showSection('users');">فتح صفحة المستخدمين</button>
-    `);
-}
-
-function advancedStatsModal() {
-    openModal("📈 إحصائيات متقدمة", `
-        <div class="cards-grid">
-            <div class="card">
-                <div class="card-title">إجمالي المستخدمين</div>
-                <div class="card-value">${document.getElementById("total_users").innerText}</div>
-            </div>
-
-            <div class="card">
-                <div class="card-title">إجمالي رأس المال</div>
-                <div class="card-value">${document.getElementById("total_capital").innerText}</div>
-            </div>
-
-            <div class="card">
-                <div class="card-title">إجمالي الأرباح</div>
-                <div class="card-value">${document.getElementById("total_profit_only").innerText}</div>
-            </div>
-        </div>
-    `);
-}
-
-function searchUserModal() {
-    openModal("🔍 بحث عن مستخدم", `
-        <input id="modalSearchUsername" placeholder="اكتب اسم المستخدم">
-        <button class="btn-blue" onclick="
-            const u = document.getElementById('modalSearchUsername').value.trim();
-            if (!u) return alert('اكتب اسم المستخدم');
-            closeModal();
-            openUserDetails(u);
-        ">بحث</button>
     `);
 }
 
@@ -1968,7 +1994,25 @@ async function toggleBotMaintenance() {
 }
 
 async function toggleSupportEmployees() {
-    alert("الزر ظاهر الآن، لكنه يحتاج Backend API يغيّر support_employees_enabled داخل data.");
+    if (!confirm("هل تريد تغيير حالة موظفي الدعم الآن؟")) return;
+
+    try {
+        const result = await api("/financial/toggle-support-employees", {
+            method: "POST"
+        });
+
+        updateSupportEmployeesBadge(result.support_employees_enabled);
+
+        alert(result.support_employees_enabled
+            ? "✅ تم تشغيل موظفي الدعم"
+            : "⛔ تم إيقاف موظفي الدعم"
+        );
+
+        await refreshAll();
+
+    } catch (e) {
+        alert(e.message);
+    }
 }
 
 window.onload = async function () {
