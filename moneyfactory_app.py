@@ -3671,10 +3671,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if bot_maintenance_mode and user_id != ADMIN_ID:
+       await update.message.reply_text(
+        "⛔ البوت متوقف مؤقتًا للصيانة\n\n"
+        "تقوم الإدارة حالياً بإجراء تحديثات على النظام.\n"
+        "يرجى المحاولة لاحقًا."
+       )
+       return
+
+    # =========================
+    # حماية المستخدم المحذوف من الداشبورد
+    # =========================
+    if user_id in logged_in_users:
+       current_username = logged_in_users.get(user_id)
+
+       if current_username not in users:
+        logged_in_users.pop(user_id, None)
+        user_states.pop(user_id, None)
+        save_data()
+
         await update.message.reply_text(
-            "⛔ البوت متوقف مؤقتًا للصيانة\n\n"
-            "تقوم الإدارة حالياً بإجراء تحديثات على النظام.\n"
-            "يرجى المحاولة لاحقًا."
+            "❌ تم حذف حسابك من النظام.\n\n"
+            "يرجى إنشاء حساب جديد أو تسجيل الدخول بحساب آخر.",
+            reply_markup=auth_keyboard()
         )
         return
 

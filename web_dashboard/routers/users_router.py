@@ -1086,6 +1086,13 @@ def delete_user(
         "pending_requests_summary": pending_requests_summary,
         "deleted_at": now_str()
          }
+    deleted_accounts_log = data.get("deleted_accounts_log", [])
+    deleted_accounts_log.append(deleted_account_entry)
+
+    if len(deleted_accounts_log) > 1000:
+        deleted_accounts_log = deleted_accounts_log[-1000:]
+
+    data["deleted_accounts_log"] = deleted_accounts_log
 
     # --- حذف المستخدم (نسخة مبسطة من البوت) ---
     users.pop(username, None)
@@ -1098,6 +1105,15 @@ def delete_user(
         "support_waiting_reply", "user_wallet_address", "user_wallet_network"
     ]:
         data.get(key, {}).pop(username, None)
+
+    # حذف جلسة تسجيل الدخول الخاصة بالمستخدم من الداشبورد/البوت
+    logged_in_users = data.get("logged_in_users", {})
+
+    if target_user_id:
+       logged_in_users.pop(str(target_user_id), None)
+       logged_in_users.pop(int(target_user_id), None)
+
+    data["logged_in_users"] = logged_in_users    
 
     # --- حفظ ---
     db_set("users", users)
