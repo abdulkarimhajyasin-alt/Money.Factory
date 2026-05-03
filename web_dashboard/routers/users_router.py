@@ -1,5 +1,7 @@
 import json
 import time
+import requests
+from web_dashboard.config import BOT_TOKEN
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query, HTTPException
@@ -814,4 +816,141 @@ def get_user_details(
         # Identity
         "front_id_url": front_id_url,
         "back_id_url": back_id_url
+    }
+class SupportReplyRequest(BaseModel):
+    username: str
+    message: str
+
+
+def send_telegram_message(chat_id: int, text: str):
+    if not BOT_TOKEN or not chat_id:
+        return False
+
+    try:
+        response = requests.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+            json={
+                "chat_id": int(chat_id),
+                "text": text
+            },
+            timeout=10
+        )
+
+        result = response.json()
+        return bool(result.get("ok"))
+
+    except Exception as e:
+        print(f"[ADMIN_WEB_SUPPORT_SEND_ERROR] {e}")
+        return False
+
+
+@router.get("/support-requests")
+def get_support_requests(admin: str = Depends(get_current_admin)):
+    users, data = load_storage()
+
+    support_waiting_reply = data.get("support_waiting_reply", {})
+    support_chat_messages = data.get("support_chat_messages", {})
+
+    result = []
+
+    for username, waiting in support_waiting_reply.items():
+        if not waiting:
+            continue
+
+        if username not in users:
+            continue
+
+        messages = support_chat_messages.get(username, [])
+        last_message = messages[-1] if messages else {}
+
+        result.append({
+            "username": username,
+            "telegram_id": data.get("user_telegram_ids", {}).get(username),
+            "full_name": data.get("user_full_name", {}).get(username, "غير متوفر"),
+            "residence": data.get("user_residence", {}).get(username, "غير متوفر"),
+            "plan": data.get("user_plans", {}).get(username, "NONE"),
+            "balance": round(float(data.get("user_balance", {}).get(username, 0)), 2),
+            "capital": round(float(data.get("user_deposits", {}).get(username, 0)), 2),
+            "last_message": last_message.get("message", "لا توجد رسالة"),
+            "last_time": last_message.get("time", "غير متوفر"),
+            "messages_count": len(messages)
+        })
+
+    return {
+        "count": len(result),
+        "requests": result
+    }
+
+
+@router.get("/support-chat/{username}")
+def get_admin_support_chat(
+    username: str,
+    admin: str = Depends(get_current_admin)
+):
+    users, data = load_storage()
+
+    ensure_user_exists(username, users)
+
+    support_chat_messages = data.get("support_chat_messages", {})
+    messages = support_chat_messages.get(username, [])
+
+    return {
+        "username": username,
+        "messages": messages[-100:],
+        "waiting_reply": bool(data.get("support_waiting_reply", {}).get(username, False))
+    }
+
+
+@router.post("/support-reply")
+def admin_support_reply(
+    request: SupportReplyRequest,
+    admin: str = Depends(get_current_admin)
+):
+    username = request.username.strip()
+    message = request.message.strip()
+
+    if not message:
+        raise HTTPException(status_code=400, detail="لا يمكن إرسال رد فارغ")
+
+    users, data = load_storage()
+
+    ensure_user_exists(username, users)
+
+    telegram_id = get_saved_telegram_id(data, username)
+
+    support_chat_messages = data.get("support_chat_messages", {})
+    support_chat_messages.setdefault(username, []).append({
+        "sender": "support",
+        "message": message,
+        "time": now_str(),
+        "read": False
+    })
+
+    data["support_chat_messages"] = support_chat_messages
+
+    support_waiting_reply = data.get("support_waiting_reply", {})
+    support_waiting_reply.pop(username, None)
+    data["support_waiting_reply"] = support_waiting_reply
+
+    add_transaction(
+        data,
+        username,
+        "web_admin_support_reply",
+        0,
+        f"رد الأدمن من لوحة الويب: {message[:80]}"
+    )
+
+    save_data(data)
+
+    telegram_sent = False
+
+    if telegram_id:
+        telegram_sent = send_telegram_message(
+            telegram_id,
+            f"📩 رد من الدعم:\n\n{message}"
+        )
+
+    return {
+        "success": True,
+        "telegram_sent": telegram_sent
     }

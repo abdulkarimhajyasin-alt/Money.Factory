@@ -387,6 +387,89 @@
             .hero h2 { font-size: 26px; }
             .metric strong, .card-value { font-size: 22px; }
         }
+
+        .support-request-card {
+    background: rgba(15,23,42,0.82);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 18px;
+    padding: 14px;
+    margin-bottom: 12px;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.support-request-card:hover {
+    background: rgba(37,99,235,0.35);
+    transform: translateY(-2px);
+}
+
+.support-request-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+}
+
+.admin-chat-box {
+    margin-top: 18px;
+    background: rgba(15,23,42,0.88);
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 24px;
+    padding: 16px;
+}
+
+.admin-chat-list {
+    height: 280px;
+    overflow-y: auto;
+    background: rgba(2,6,23,0.55);
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 18px;
+    padding: 12px;
+}
+
+.admin-chat-message {
+    max-width: 82%;
+    padding: 10px 12px;
+    border-radius: 16px;
+    margin-bottom: 10px;
+    line-height: 1.7;
+    word-break: break-word;
+}
+
+.admin-chat-message.user {
+    margin-left: auto;
+    background: rgba(255,255,255,0.12);
+}
+
+.admin-chat-message.support {
+    margin-right: auto;
+    background: linear-gradient(135deg, #2563eb, #06b6d4);
+}
+
+.admin-chat-time {
+    display: block;
+    margin-top: 5px;
+    font-size: 11px;
+    color: #cbd5e1;
+}
+
+.admin-chat-input {
+    display: flex;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.admin-chat-input textarea {
+    margin: 0;
+    resize: none;
+}
+
+.admin-chat-input button {
+    background: #16a34a;
+    color: white;
+    min-width: 100px;
+}
     </style>
 </head>
 
@@ -419,7 +502,9 @@
         <button id="navUsers" onclick="showSection('users')">Users Tree</button>
         <button id="navFinancial" onclick="showSection('financial')">Financial</button>
         <button id="navDetails" class="hidden" onclick="showSection('details')">Details</button>
-        <button onclick="refreshAll()">Refresh</button>
+        <button id="navSupport" onclick="showSection('support')">
+            📩 Support <span id="supportRequestsCount" class="badge red">0</span>
+        </button>
     </div>
 
     <section id="dashboardSection">
@@ -632,6 +717,15 @@
         </div>
     </section>
 
+    <section id="supportSection" class="hidden">
+      <div class="panel">
+        <h3>📩 طلبات مراسلة الدعم</h3>
+        <div class="subtitle">الرسائل القادمة من المستخدمين ولم يتم الرد عليها بعد</div>
+
+        <div id="supportRequestsBox" style="margin-top:18px;"></div>
+      </div>
+    </section>
+
     <section id="detailsSection" class="hidden">
         <button class="btn-dark" onclick="showSection('users')">رجوع إلى المستخدمين</button>
         <div id="detailsBox" style="margin-top:18px;"></div>
@@ -771,7 +865,7 @@ function setText(id, value) {
 }
 
 function showSection(name) {
-    ["dashboard", "users", "financial", "details"].forEach(sec => {
+    ["dashboard", "users", "financial", "support", "details"].forEach(sec => {
         document.getElementById(sec + "Section").classList.add("hidden");
     });
 
@@ -784,10 +878,12 @@ function showSection(name) {
 
     if (name === "users") loadUsers();
     if (name === "financial") loadFinancial();
+    if (name === "support") loadSupportRequests();
 }
 
 async function refreshAll() {
     await loadDashboard();
+    await updateSupportRequestsCount();
 
     if (!document.getElementById("usersSection").classList.contains("hidden")) {
         await loadUsers();
@@ -795,6 +891,10 @@ async function refreshAll() {
 
     if (!document.getElementById("financialSection").classList.contains("hidden")) {
         await loadFinancial();
+    }
+
+    if (!document.getElementById("supportSection").classList.contains("hidden")) {
+    await loadSupportRequests();
     }
 
     if (currentDetailsUser) {
@@ -1478,6 +1578,156 @@ function showImage(url) {
 
 function closeImageModal() {
     document.getElementById("imageModal").classList.add("hidden");
+}
+
+async function updateSupportRequestsCount() {
+    try {
+        const data = await api("/users/support-requests");
+        const count = Number(data.count || 0);
+        const badge = document.getElementById("supportRequestsCount");
+
+        if (badge) {
+            badge.innerText = count;
+            badge.classList.toggle("hidden", count <= 0);
+        }
+    } catch (e) {
+        console.log("support count error:", e.message);
+    }
+}
+
+
+async function loadSupportRequests() {
+    const box = document.getElementById("supportRequestsBox");
+    box.innerHTML = `<div class="panel">جار تحميل طلبات الدعم...</div>`;
+
+    try {
+        const data = await api("/users/support-requests");
+        const requests = data.requests || [];
+
+        document.getElementById("supportRequestsCount").innerText = requests.length;
+
+        if (!requests.length) {
+            box.innerHTML = `
+                <div class="card">
+                    <div class="card-title">لا توجد طلبات دعم معلقة</div>
+                    <div class="card-note">كل الرسائل تم الرد عليها.</div>
+                </div>
+            `;
+            return;
+        }
+
+        box.innerHTML = requests.map(req => `
+            <div class="support-request-card" onclick="openSupportUser('${jsSafe(req.username)}')">
+                <div class="support-request-head">
+                    <strong>👤 ${safeText(req.username)}</strong>
+                    <span class="badge orange">بانتظار الرد</span>
+                </div>
+
+                <div>🧾 الاسم: ${safeText(req.full_name)}</div>
+                <div>🆔 Telegram ID: ${safeText(req.telegram_id)}</div>
+                <div>📦 الباقة: ${safeText(req.plan)}</div>
+                <div>💰 الرصيد: ${money(req.balance)} | رأس المال: ${money(req.capital)}</div>
+                <div style="margin-top:8px;color:#bae6fd;">💬 آخر رسالة:</div>
+                <div>${safeText(req.last_message)}</div>
+                <div style="margin-top:6px;color:#94a3b8;font-size:12px;">${safeText(req.last_time)}</div>
+            </div>
+        `).join("");
+
+    } catch (e) {
+        box.innerHTML = `<div class="msg error">${safeText(e.message)}</div>`;
+    }
+}
+
+
+async function openSupportUser(username) {
+    await openUserDetails(username);
+
+    const detailsSection = document.getElementById("detailsSection");
+    const backButton = detailsSection.querySelector("button");
+
+    if (backButton) {
+        backButton.innerText = "رجوع إلى طلبات الدعم";
+        backButton.setAttribute("onclick", "showSection('support')");
+    }
+
+    await renderAdminSupportChat(username);
+}
+
+
+async function renderAdminSupportChat(username) {
+    const box = document.getElementById("detailsBox");
+
+    let chatPanel = document.getElementById("adminSupportChatPanel");
+
+    if (!chatPanel) {
+        box.insertAdjacentHTML("beforeend", `
+            <div id="adminSupportChatPanel" class="admin-chat-box">
+                <h3>📩 صندوق مراسلة الدعم</h3>
+                <div id="adminSupportChatList" class="admin-chat-list"></div>
+
+                <div class="admin-chat-input">
+                    <textarea id="adminSupportReplyText" rows="2" placeholder="اكتب ردك للمستخدم..."></textarea>
+                    <button onclick="sendAdminSupportReply('${jsSafe(username)}')">إرسال</button>
+                </div>
+            </div>
+        `);
+    }
+
+    await loadAdminSupportChat(username);
+}
+
+
+async function loadAdminSupportChat(username) {
+    const list = document.getElementById("adminSupportChatList");
+
+    if (!list) return;
+
+    const data = await api("/users/support-chat/" + encodeURIComponent(username));
+    const messages = data.messages || [];
+
+    if (!messages.length) {
+        list.innerHTML = `<div style="text-align:center;color:#94a3b8;margin-top:100px;">لا توجد رسائل</div>`;
+        return;
+    }
+
+    list.innerHTML = messages.map(msg => `
+        <div class="admin-chat-message ${msg.sender === "support" ? "support" : "user"}">
+            ${safeText(msg.message)}
+            <span class="admin-chat-time">${safeText(msg.time || "")}</span>
+        </div>
+    `).join("");
+
+    list.scrollTop = list.scrollHeight;
+}
+
+
+async function sendAdminSupportReply(username) {
+    const input = document.getElementById("adminSupportReplyText");
+    const message = input.value.trim();
+
+    if (!message) {
+        alert("لا يمكن إرسال رد فارغ");
+        return;
+    }
+
+    try {
+        await api("/users/support-reply", {
+            method: "POST",
+            body: JSON.stringify({
+                username,
+                message
+            })
+        });
+
+        input.value = "";
+        await loadAdminSupportChat(username);
+        await updateSupportRequestsCount();
+
+        alert("تم إرسال الرد للمستخدم");
+
+    } catch (e) {
+        alert(e.message);
+    }
 }
 
 function openModal(title, content) {
