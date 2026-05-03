@@ -470,6 +470,24 @@
     color: white;
     min-width: 100px;
 }
+
+.image-preview-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.82);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 18px;
+}
+
+.image-preview-overlay img {
+    max-width: 96%;
+    max-height: 92vh;
+    border-radius: 18px;
+    box-shadow: 0 20px 80px rgba(0,0,0,0.55);
+}
     </style>
 </head>
 
@@ -1846,16 +1864,24 @@ async function renderAdminSupportChat(username) {
     await loadAdminSupportChat(username);
 }
 
-async function getAdminTelegramMediaUrl(fileId) {
-    if (!fileId) return "";
+function openAdminImagePreview(src) {
+    const overlay = document.getElementById("adminImagePreviewOverlay");
+    const img = document.getElementById("adminImagePreviewImg");
 
-    try {
-        const data = await api("/users/telegram-media/" + encodeURIComponent(fileId));
-        return data.data_url || "";
-    } catch (e) {
-        console.log("media load error:", e.message);
-        return "";
-    }
+    if (!overlay || !img || !src) return;
+
+    img.src = src;
+    overlay.classList.remove("hidden");
+}
+
+function closeAdminImagePreview(event) {
+    const overlay = document.getElementById("adminImagePreviewOverlay");
+    const img = document.getElementById("adminImagePreviewImg");
+
+    if (!overlay || !img) return;
+
+    overlay.classList.add("hidden");
+    img.src = "";
 }
 
 async function getAdminTelegramMediaUrl(fileId) {
@@ -1893,7 +1919,7 @@ for (const msg of messages) {
 
         content = `
             ${imageUrl
-                ? `<img src="${imageUrl}" style="max-width:240px;border-radius:14px;display:block;margin-bottom:8px;">`
+                ? `<img src="${imageUrl}" onclick="openAdminImagePreview('${imageUrl}')" style="max-width:240px;border-radius:14px;display:block;margin-bottom:8px;cursor:pointer;">`
                 : `<div>🖼️ صورة مرفقة</div>`
             }
             <div>${safeText(msg.message || msg.caption || "")}</div>
@@ -2524,6 +2550,8 @@ window.onload = async function () {
 
 
 </script>
-
+<div id="adminImagePreviewOverlay" class="image-preview-overlay hidden" onclick="closeAdminImagePreview(event)">
+    <img id="adminImagePreviewImg" src="" alt="preview" onclick="event.stopPropagation()">
+</div>
 </body>
 </html>

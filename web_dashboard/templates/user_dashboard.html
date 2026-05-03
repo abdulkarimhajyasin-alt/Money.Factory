@@ -529,6 +529,28 @@
     align-items: center;
     justify-content: center;
 }
+
+.image-preview-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.82);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 18px;
+}
+
+.image-preview-overlay img {
+    max-width: 96%;
+    max-height: 92vh;
+    border-radius: 18px;
+    box-shadow: 0 20px 80px rgba(0,0,0,0.55);
+}
+
+.hidden {
+    display: none !important;
+}
     </style>
 </head>
 
@@ -1357,6 +1379,26 @@ function updateSupportBadge(count) {
     }
 }
 
+function openImagePreview(src) {
+    const overlay = document.getElementById("imagePreviewOverlay");
+    const img = document.getElementById("imagePreviewImg");
+
+    if (!overlay || !img || !src) return;
+
+    img.src = src;
+    overlay.classList.remove("hidden");
+}
+
+function closeImagePreview(event) {
+    const overlay = document.getElementById("imagePreviewOverlay");
+    const img = document.getElementById("imagePreviewImg");
+
+    if (!overlay || !img) return;
+
+    overlay.classList.add("hidden");
+    img.src = "";
+}
+
 async function getUserTelegramMediaUrl(fileId) {
     if (!fileId) return "";
 
@@ -1402,7 +1444,7 @@ for (const msg of messages) {
 
         content = `
             ${imageUrl
-                ? `<img src="${imageUrl}" style="max-width:220px;border-radius:14px;display:block;margin-bottom:8px;">`
+                ? `<img src="${imageUrl}" onclick="openImagePreview('${imageUrl}')" style="max-width:220px;border-radius:14px;display:block;margin-bottom:8px;cursor:pointer;">`
                 : `<div>🖼️ صورة مرفقة</div>`
             }
             <div>${escapeHtml(msg.message || msg.caption || "")}</div>
@@ -1647,6 +1689,8 @@ window.onload = async function () {
     }
 };
 </script>
-
+<div id="imagePreviewOverlay" class="image-preview-overlay hidden" onclick="closeImagePreview(event)">
+    <img id="imagePreviewImg" src="" alt="preview" onclick="event.stopPropagation()">
+</div>
 </body>
 </html>
