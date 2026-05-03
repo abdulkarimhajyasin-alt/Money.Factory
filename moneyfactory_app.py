@@ -307,6 +307,26 @@ PLAN_LEVELS = {
 def now_str():
     return time.strftime("%Y-%m-%d %H:%M:%S")
 
+def add_support_reply_to_web_chat(username, message):
+    try:
+        data = db_get("data", {})
+
+        support_chat_messages = data.get("support_chat_messages", {})
+
+        support_chat_messages.setdefault(username, []).append({
+            "sender": "support",
+            "message": message,
+            "time": now_str(),
+            "read": False
+        })
+
+        data["support_chat_messages"] = support_chat_messages
+
+        db_set("data", data)
+
+    except Exception as e:
+        print(f"[ADD_SUPPORT_REPLY_TO_WEB_CHAT_ERROR] {e}")
+
 def format_timestamp(ts):
     if not ts:
         return "غير متوفر"
