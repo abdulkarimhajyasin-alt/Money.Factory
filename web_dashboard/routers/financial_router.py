@@ -208,18 +208,27 @@ def get_pending_deposits(admin: str = Depends(get_current_admin)):
     data = db_get("data", {})
     result = []
     for user_id, request in data.get("pending_deposit_requests", {}).items():
+        proof_file_id = request.get("proof_file_id")
+
         result.append({
-            "user_id": user_id,
-            "username": request.get("username", "غير معروف"),
-            "plan": request.get("plan", "غير معروف"),
-            "amount": request.get("amount", 0),
-            "type": request.get("type", "new_deposit"),
-            "time": request.get("time", "غير متوفر"),
-            "old_plan": request.get("old_plan"),
-            "new_plan": request.get("new_plan"),
-            "old_capital": request.get("old_capital"),
-            "final_capital": request.get("final_capital")
-        })
+    "user_id": user_id,
+    "username": request.get("username", "غير معروف"),
+    "plan": request.get("plan", "غير معروف"),
+    "amount": request.get("amount", 0),
+    "type": request.get("type", "new_deposit"),
+    "time": request.get("time", "غير متوفر"),
+    "old_plan": request.get("old_plan"),
+    "new_plan": request.get("new_plan"),
+    "old_capital": request.get("old_capital"),
+    "final_capital": request.get("final_capital"),
+
+    # صورة إثبات الدفع من لوحة المستخدم Web
+    "proof_image_base64": request.get("proof_image_base64"),
+
+    # صورة إثبات الدفع من بوت تيليغرام
+    "proof_file_id": proof_file_id,
+    "proof_image_url": build_telegram_file_url(proof_file_id)
+      })
     return {"count": len(result), "pending_deposits": result}
 
 

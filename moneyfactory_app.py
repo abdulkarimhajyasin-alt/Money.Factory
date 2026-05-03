@@ -6589,7 +6589,8 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "type": "plan_change",
             "old_plan": current_plan,
             "new_plan": target_plan,
-            "time": now_str()
+            "time": now_str(),
+            "proof_file_id": photo_file.file_id
         }
         save_data()
 
@@ -6636,7 +6637,8 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "type": "topup_deposit",
             "old_capital": current_capital,
             "final_capital": final_capital,
-            "time": now_str()
+            "time": now_str(),
+            "proof_file_id": photo_file.file_id
         }
         save_data()
 
@@ -6679,7 +6681,8 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "plan": state["plan"],
         "amount": state["amount"],
         "type": "new_deposit",
-        "time": now_str()
+        "time": now_str(),
+        "proof_file_id": photo_file.file_id
     }    
     save_data()
 

@@ -670,9 +670,16 @@
             <div class="table-wrap">
                 <table>
                     <thead>
-                    <tr>
-                        <th>User ID</th><th>Username</th><th>Plan</th><th>Amount</th><th>Type</th><th>Time</th><th>Actions</th>
-                    </tr>
+                      <tr>
+                       <th>User ID</th>
+                       <th>Username</th>
+                       <th>Plan</th>
+                       <th>Amount</th>
+                       <th>Type</th>
+                       <th>Time</th>
+                       <th>Proof</th>
+                       <th>Actions</th>
+                      </tr>
                     </thead>
                     <tbody id="pendingDepositsBody"></tbody>
                 </table>
@@ -1469,20 +1476,30 @@ async function loadPendingDeposits() {
     body.innerHTML = items.length ? "" : `<tr><td colspan="7">لا توجد طلبات</td></tr>`;
 
     items.forEach(item => {
-        body.insertAdjacentHTML("beforeend", `
-            <tr>
-                <td>${safeText(item.user_id)}</td>
-                <td>${safeText(item.username)}</td>
-                <td>${safeText(item.plan)}</td>
-                <td>${money(item.amount)}</td>
-                <td>${safeText(item.type)}</td>
-                <td>${safeText(item.time)}</td>
-                <td>
-                    <button class="btn-green" onclick="approveDeposit('${jsSafe(item.user_id)}')">Approve</button>
-                    <button class="btn-red" onclick="rejectDeposit('${jsSafe(item.user_id)}')">Reject</button>
-                </td>
-            </tr>
-        `);
+        
+            const proofSrc = item.proof_image_base64 || item.proof_image_url || "";
+
+            body.insertAdjacentHTML("beforeend", `
+                  <tr>
+                    <td>${safeText(item.user_id)}</td>
+                    <td>${safeText(item.username)}</td>
+                    <td>${safeText(item.plan)}</td>
+                    <td>${money(item.amount)}</td>
+                    <td>${safeText(item.type)}</td>
+                    <td>${safeText(item.time)}</td>
+                    <td>
+                        ${proofSrc
+                             ? `<img class="img-thumb" src="${proofSrc}" onclick="showImage('${proofSrc}')">`
+                             : "—"
+                            }
+                    </td>
+                    <td>
+                        <button class="btn-green" onclick="approveDeposit('${item.user_id}')">Approve</button>
+                        <button class="btn-red" onclick="rejectDeposit('${item.user_id}')">Reject</button>
+                    </td>
+                 </tr>
+            `);
+       
     });
 }
 
