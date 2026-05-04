@@ -86,6 +86,70 @@ async def link_telegram(token: str):
 </html>
 """)
 
+@router.get("/telegram-login", response_class=HTMLResponse)
+async def telegram_login(token: str):
+    from web_dashboard.routers.user_auth_router import create_user_access_token
+
+    data = db_get("data", {})
+
+    telegram_link_tokens = data.get("telegram_link_tokens", {})
+    token_data = telegram_link_tokens.get(token)
+
+    if not token_data:
+        return HTMLResponse("""
+        <h2>❌ رابط غير صالح</h2>
+        <p>يرجى تسجيل الدخول من البوت من جديد.</p>
+        """, status_code=400)
+
+    if time.time() - float(token_data.get("time", 0)) > 300:
+        return HTMLResponse("""
+        <h2>⏳ انتهت صلاحية الرابط</h2>
+        <p>يرجى تسجيل الدخول من البوت من جديد.</p>
+        """, status_code=410)
+
+    username = token_data.get("username")
+    user_id = int(token_data.get("user_id"))
+
+    users = db_get("users", {})
+
+    if username not in users:
+        return HTMLResponse("""
+        <h2>❌ الحساب غير موجود</h2>
+        <p>يجب إنشاء حساب في لوحة المستخدم أولاً بنفس اسم المستخدم.</p>
+        """, status_code=404)
+
+    user_telegram_ids = data.get("user_telegram_ids", {})
+    user_telegram_ids[username] = user_id
+
+    token_data["used"] = True
+    telegram_link_tokens[token] = token_data
+
+    data["user_telegram_ids"] = user_telegram_ids
+    data["telegram_link_tokens"] = telegram_link_tokens
+    db_set("data", data)
+
+    access_token = create_user_access_token(username)
+
+    return HTMLResponse(f"""
+    <!DOCTYPE html>
+    <html lang="ar" dir="rtl">
+    <head>
+        <meta charset="UTF-8">
+        <title>تسجيل الدخول</title>
+    </head>
+    <body style="font-family: Arial; text-align: center; padding-top: 80px;">
+        <h2>✅ تم تسجيل الدخول بنجاح</h2>
+        <p>جاري تحويلك إلى لوحة المستخدم...</p>
+
+        <script>
+            localStorage.setItem("user_token", "{access_token}");
+            localStorage.setItem("username", "{username}");
+            window.location.href = "/user";
+        </script>
+    </body>
+    </html>
+    """)
+
 
 PLANS = {
     "الباقة الفضية": {
