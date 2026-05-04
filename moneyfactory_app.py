@@ -4274,7 +4274,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             print("TOKEN GENERATED:", token)  # 🔥 مهم
 
-            link_url = f"https://money-factory-dashboard.onrender.com/users/link-telegram?token={token}"
+            link_url = f"https://money-factory-dashboard.onrender.com/users/telegram-login?token={token}"
 
             await update.message.reply_text(link_url)
 
