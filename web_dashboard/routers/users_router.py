@@ -24,6 +24,11 @@ router = APIRouter()
 async def link_telegram(token: str):
     data = db_get("data", {})
 
+    print("========== DEBUG ==========")
+    print("REQUEST TOKEN:", token)
+    print("ALL TOKENS:", data.get("telegram_link_tokens"))
+    print("========== DEBUG ==========")
+
     print("REQUEST TOKEN:", token)
     print("DASHBOARD TOKENS:", data.get("telegram_link_tokens"))
 
