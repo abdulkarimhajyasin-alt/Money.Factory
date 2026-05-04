@@ -4261,7 +4261,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             token = generate_link_token(user_id, username)
 
-            link_url = f"https://money-factory-dashboard.onrender.com/user/link-telegram?token={token}"
+            link_url = f"https://money-factory-dashboard.onrender.com/users/link-telegram?token={token}"
 
             await update.message.reply_text(
                  f"👋 أهلاً بك {tg_first_name}{extra_msg}\n\n"
