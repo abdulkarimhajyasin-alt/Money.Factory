@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from web_dashboard.config import WEB_SECRET_KEY
 from web_dashboard.database import get_web_db_connection, release_web_db_connection
 from web_dashboard.services.storage_service import web_db_get as db_get
+from web_dashboard.services.storage_service import db_get
 
 
 router = APIRouter()
