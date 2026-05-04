@@ -32,7 +32,7 @@ async def link_telegram(token: str):
         # محاولة قراءة username من Query أو تجاهل
         # نرجّع نجاح عام لتفادي 400 بعد أول فتح
         from fastapi.responses import RedirectResponse
-        return RedirectResponse(url="/user-panel", status_code=302)
+        return RedirectResponse(url="/", status_code=302)
 
     # انتهاء الصلاحية (اختياري)
     if time.time() - float(token_data.get("time", 0)) > 300:
@@ -63,7 +63,7 @@ async def link_telegram(token: str):
     db_set("data", data)
 
     from fastapi.responses import RedirectResponse
-    return RedirectResponse(url="/user-panel", status_code=302)
+    return RedirectResponse(url="/", status_code=302)
 
 
 PLANS = {
