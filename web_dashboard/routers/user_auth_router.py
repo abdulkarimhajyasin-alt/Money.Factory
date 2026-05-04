@@ -146,6 +146,17 @@ def get_current_user(
         if username not in users:
             raise HTTPException(status_code=401, detail="User no longer exists")
 
+        data = db_get("data", {})
+        user_telegram_ids = data.get("user_telegram_ids", {})
+
+        telegram_id = user_telegram_ids.get(username)
+
+        if not telegram_id:
+            raise HTTPException(
+                status_code=403,
+                detail="يجب ربط حسابك مع Telegram قبل استخدام لوحة المستخدم"
+            )
+
         return username
 
     except JWTError:
@@ -171,6 +182,17 @@ def user_login(request: UserLoginRequest):
 
     if users.get(username) != password:
         raise HTTPException(status_code=401, detail="Invalid username or password")
+
+    data = db_get("data", {})
+    user_telegram_ids = data.get("user_telegram_ids", {})
+
+    telegram_id = user_telegram_ids.get(username)
+
+    if not telegram_id:
+        raise HTTPException(
+            status_code=403,
+            detail="يجب ربط حسابك مع Telegram قبل تسجيل الدخول إلى لوحة المستخدم"
+        )
 
     token = create_user_access_token(username)
 

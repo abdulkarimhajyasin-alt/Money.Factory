@@ -19,6 +19,40 @@ ADMIN_ID = ADMIN_IDS[0]
 
 router = APIRouter()
 
+@router.get("/link-telegram")
+async def link_telegram(token: str):
+    from moneyfactory_app import link_tokens
+    from web_dashboard.services.storage_service import db_get, db_set
+    import time
+
+    token_data = link_tokens.get(token)
+
+    if not token_data:
+        return {"error": "Invalid token"}
+
+    # تحقق من انتهاء التوكن (5 دقائق)
+    if time.time() - token_data["time"] > 300:
+        del link_tokens[token]
+        return {"error": "Token expired"}
+
+    user_id = token_data["user_id"]
+    username = token_data["username"]
+
+    data = db_get("data", {})
+    users = data.get("users", {})
+
+    if username in users:
+        users[username]["telegram_id"] = user_id
+
+        data["users"] = users
+        db_set("data", data)
+
+        del link_tokens[token]
+
+        return {"success": True, "message": "تم ربط الحساب بنجاح"}
+
+    return {"error": "User not found"}
+
 
 PLANS = {
     "الباقة الفضية": {

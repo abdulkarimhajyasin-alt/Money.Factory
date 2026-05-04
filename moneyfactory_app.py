@@ -94,6 +94,8 @@ user_timezone = {}                  # username -> IANA timezone مثل Europe/Vi
 
 pending_profit_capital_activation = {}  # username -> بيانات تفعيل رأس المال الجديد للربح بعد نهاية دورة السحب
 
+link_tokens = {}
+
 
 PLANS = {
     "الباقة الفضية": {
@@ -302,6 +304,19 @@ PLAN_LEVELS = {
     "الباقة الذهبية": 2,
     "باقة VIP": 3
 }
+
+
+import uuid
+import time
+
+def generate_link_token(user_id, username):
+    token = str(uuid.uuid4())
+    link_tokens[token] = {
+        "user_id": user_id,
+        "username": username,
+        "time": time.time()
+    }
+    return token
 
 
 # =========================
@@ -4244,6 +4259,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             tg_first_name = user.first_name if user.first_name else "مستخدم"
 
+            token = generate_link_token(user_id, username)
+
+            link_url = f"https://money-factory-dashboard.onrender.com/user/link-telegram?token={token}"
+
             await update.message.reply_text(
                  f"👋 أهلاً بك {tg_first_name}{extra_msg}\n\n"
                  f"💎 عميلنا العزيز:\n\n"
@@ -4254,7 +4273,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                  f"🔗 شاركه مع أصدقائك للاستفادة من نظام الإحالة.\n\n"
                  f"نتمنى لك تجربة موفقة 🚀"
                       )
-            await update.message.reply_text("للاشتراك اختر احدى الباقات في الاسفل \n\nواتبع الخطوات بدقة لاتمام اشتراكك بنجاح \n\nاذا كنت مشترك لدينا يمكنك الانتقال فورا الى باقتي للدخول الى باقتك",
+            await update.message.reply_text(
+                 f"🔗 الان يمكنك الانتقال الى موقنا الالكتروني لمتابعة الاشتراك وادارة حسابك للبدء في صناعة المال \n{link_url}",
                                             reply_markup=main_menu_keyboard())
         else:
             await update.message.reply_text("❌ اسم المستخدم أو كلمة المرور غير صحيحة")
