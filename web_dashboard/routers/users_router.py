@@ -24,6 +24,9 @@ router = APIRouter()
 async def link_telegram(token: str):
     data = db_get("data", {})
 
+    print("REQUEST TOKEN:", token)
+    print("DASHBOARD TOKENS:", data.get("telegram_link_tokens"))
+
     telegram_link_tokens = data.get("telegram_link_tokens", {})
     token_data = telegram_link_tokens.get(token)
 
