@@ -42,7 +42,7 @@ async def link_telegram(token: str):
         """, status_code=400)
 
     if time.time() - float(token_data.get("time", 0)) > 300:
-        telegram_link_tokens.pop(token, None)
+        
         data["telegram_link_tokens"] = telegram_link_tokens
         db_set("data", data)
 
