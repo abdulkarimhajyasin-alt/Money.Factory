@@ -28,12 +28,16 @@ async def link_telegram(token: str):
     token_data = link_tokens.get(token)
 
     if not token_data:
-        return {"error": "Invalid token"}
+        return HTMLResponse("""
+         <h2>❌ رابط غير صالح</h2>
+         """)
 
     # تحقق من انتهاء التوكن (5 دقائق)
     if time.time() - token_data["time"] > 300:
         del link_tokens[token]
-        return {"error": "Token expired"}
+        return HTMLResponse("""
+        <h2>⏳ انتهت صلاحية الرابط</h2>
+         """)
 
     user_id = token_data["user_id"]
     username = token_data["username"]
@@ -49,7 +53,12 @@ async def link_telegram(token: str):
 
         del link_tokens[token]
 
-        return {"success": True, "message": "تم ربط الحساب بنجاح"}
+        from fastapi.responses import HTMLResponse
+
+        return HTMLResponse("""
+        <h2>✅ تم ربط حسابك بنجاح</h2>
+        <p>يمكنك الآن العودة إلى البوت واستخدام جميع الميزات.</p>
+        """)
 
     return {"error": "User not found"}
 
