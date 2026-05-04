@@ -1,4 +1,5 @@
 import json
+import uuid
 import time
 import asyncio
 import os
@@ -306,16 +307,24 @@ PLAN_LEVELS = {
 }
 
 
-import uuid
-import time
+
+
 
 def generate_link_token(user_id, username):
     token = str(uuid.uuid4())
-    link_tokens[token] = {
-        "user_id": user_id,
+
+    data = db_get("data", {})
+    telegram_link_tokens = data.get("telegram_link_tokens", {})
+
+    telegram_link_tokens[token] = {
+        "user_id": str(user_id),
         "username": username,
         "time": time.time()
     }
+
+    data["telegram_link_tokens"] = telegram_link_tokens
+    db_set("data", data)
+
     return token
 
 

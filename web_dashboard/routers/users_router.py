@@ -6,6 +6,7 @@ from web_dashboard.config import BOT_TOKEN
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from web_dashboard.auth import get_current_admin
@@ -19,48 +20,54 @@ ADMIN_ID = ADMIN_IDS[0]
 
 router = APIRouter()
 
-@router.get("/link-telegram")
+@router.get("/link-telegram", response_class=HTMLResponse)
 async def link_telegram(token: str):
-    from moneyfactory_app import link_tokens
-    from web_dashboard.services.storage_service import db_get, db_set
-    import time
+    data = db_get("data", {})
 
-    token_data = link_tokens.get(token)
+    telegram_link_tokens = data.get("telegram_link_tokens", {})
+    token_data = telegram_link_tokens.get(token)
 
     if not token_data:
         return HTMLResponse("""
-         <h2>❌ رابط غير صالح</h2>
-         """)
+        <h2>❌ رابط غير صالح</h2>
+        <p>يرجى إنشاء رابط ربط جديد من البوت.</p>
+        """, status_code=400)
 
-    # تحقق من انتهاء التوكن (5 دقائق)
-    if time.time() - token_data["time"] > 300:
-        del link_tokens[token]
-        return HTMLResponse("""
-        <h2>⏳ انتهت صلاحية الرابط</h2>
-         """)
-
-    user_id = token_data["user_id"]
-    username = token_data["username"]
-
-    data = db_get("data", {})
-    users = data.get("users", {})
-
-    if username in users:
-        users[username]["telegram_id"] = user_id
-
-        data["users"] = users
+    if time.time() - float(token_data.get("time", 0)) > 300:
+        telegram_link_tokens.pop(token, None)
+        data["telegram_link_tokens"] = telegram_link_tokens
         db_set("data", data)
 
-        del link_tokens[token]
-
-        from fastapi.responses import HTMLResponse
-
         return HTMLResponse("""
-        <h2>✅ تم ربط حسابك بنجاح</h2>
-        <p>يمكنك الآن العودة إلى البوت واستخدام جميع الميزات.</p>
-        """)
+        <h2>⏳ انتهت صلاحية الرابط</h2>
+        <p>يرجى إنشاء رابط جديد من البوت.</p>
+        """, status_code=410)
 
-    return {"error": "User not found"}
+    username = token_data.get("username")
+    user_id = token_data.get("user_id")
+
+    users = db_get("users", {})
+
+    if username not in users:
+        return HTMLResponse("""
+        <h2>❌ لم يتم العثور على الحساب</h2>
+        <p>تأكد أنك أنشأت حساب الداشبورد بنفس اسم المستخدم.</p>
+        """, status_code=404)
+
+    user_telegram_ids = data.get("user_telegram_ids", {})
+    user_telegram_ids[username] = int(user_id)
+
+    telegram_link_tokens.pop(token, None)
+
+    data["user_telegram_ids"] = user_telegram_ids
+    data["telegram_link_tokens"] = telegram_link_tokens
+
+    db_set("data", data)
+
+    return HTMLResponse("""
+    <h2>✅ تم ربط حسابك بنجاح</h2>
+    <p>يمكنك الآن العودة إلى الداشبورد وتسجيل الدخول.</p>
+    """)
 
 
 PLANS = {
