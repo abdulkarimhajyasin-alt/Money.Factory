@@ -63,10 +63,8 @@ async def link_telegram(token: str):
     data["telegram_link_tokens"] = telegram_link_tokens
     db_set("data", data)
 
-    return HTMLResponse("""
-    <h2>✅ تم ربط حسابك بنجاح</h2>
-    <p>يمكنك الآن العودة إلى الداشبورد.</p>
-    """)
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/login", status_code=302)
 
 
 PLANS = {
