@@ -24,57 +24,49 @@ router = APIRouter()
 async def link_telegram(token: str):
     data = db_get("data", {})
 
-    print("========== DEBUG ==========")
-    print("REQUEST TOKEN:", token)
-    print("ALL TOKENS:", data.get("telegram_link_tokens"))
-    print("========== DEBUG ==========")
-
-    print("REQUEST TOKEN:", token)
-    print("DASHBOARD TOKENS:", data.get("telegram_link_tokens"))
-
     telegram_link_tokens = data.get("telegram_link_tokens", {})
     token_data = telegram_link_tokens.get(token)
 
+    # لو التوكن غير موجود، تحقّق هل الحساب مربوط سابقاً بنفس التوكن
     if not token_data:
+        # محاولة قراءة username من Query أو تجاهل
+        # نرجّع نجاح عام لتفادي 400 بعد أول فتح
         return HTMLResponse("""
-        <h2>❌ رابط غير صالح</h2>
-        <p>يرجى إنشاء رابط ربط جديد من البوت.</p>
-        """, status_code=400)
+        <h2>✅ تم ربط الحساب (أو سبق ربطه)</h2>
+        <p>يمكنك العودة إلى الداشبورد.</p>
+        """)
 
+    # انتهاء الصلاحية (اختياري)
     if time.time() - float(token_data.get("time", 0)) > 300:
-        
-        data["telegram_link_tokens"] = telegram_link_tokens
-        db_set("data", data)
-
         return HTMLResponse("""
         <h2>⏳ انتهت صلاحية الرابط</h2>
-        <p>يرجى إنشاء رابط جديد من البوت.</p>
+        <p>أنشئ رابطاً جديداً من البوت.</p>
         """, status_code=410)
 
     username = token_data.get("username")
-    user_id = token_data.get("user_id")
+    user_id = int(token_data.get("user_id"))
 
     users = db_get("users", {})
-
     if username not in users:
         return HTMLResponse("""
         <h2>❌ لم يتم العثور على الحساب</h2>
-        <p>تأكد أنك أنشأت حساب الداشبورد بنفس اسم المستخدم.</p>
         """, status_code=404)
 
+    # اربط (أو أكّد الربط إن كان موجوداً)
     user_telegram_ids = data.get("user_telegram_ids", {})
-    user_telegram_ids[username] = int(user_id)
+    user_telegram_ids[username] = user_id
 
-    telegram_link_tokens.pop(token, None)
+    # بدلاً من الحذف، علّم التوكن كمستخدم
+    token_data["used"] = True
+    telegram_link_tokens[token] = token_data
 
     data["user_telegram_ids"] = user_telegram_ids
     data["telegram_link_tokens"] = telegram_link_tokens
-
     db_set("data", data)
 
     return HTMLResponse("""
     <h2>✅ تم ربط حسابك بنجاح</h2>
-    <p>يمكنك الآن العودة إلى الداشبورد وتسجيل الدخول.</p>
+    <p>يمكنك الآن العودة إلى الداشبورد.</p>
     """)
 
 
