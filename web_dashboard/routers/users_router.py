@@ -31,10 +31,9 @@ async def link_telegram(token: str):
     if not token_data:
         # محاولة قراءة username من Query أو تجاهل
         # نرجّع نجاح عام لتفادي 400 بعد أول فتح
-        return HTMLResponse("""
-        <h2>✅ تم ربط الحساب (أو سبق ربطه)</h2>
-        <p>يمكنك العودة إلى الداشبورد.</p>
-        """)
+        from fastapi.responses import RedirectResponse
+
+        return RedirectResponse(url="/login", status_code=302)
 
     # انتهاء الصلاحية (اختياري)
     if time.time() - float(token_data.get("time", 0)) > 300:
