@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from web_dashboard.config import WEB_SECRET_KEY
 from web_dashboard.database import get_web_db_connection, release_web_db_connection
 from web_dashboard.services.storage_service import web_db_get as db_get
-from web_dashboard.services.storage_service import db_get_data
+from web_dashboard.services.storage_service import get_all_data
 
 
 router = APIRouter()
@@ -147,7 +147,7 @@ def get_current_user(
         if username not in users:
             raise HTTPException(status_code=401, detail="User no longer exists")
 
-        data = db_get_data()
+        data = get_all_data()
         user_telegram_ids = data.get("user_telegram_ids", {})
 
         telegram_id = user_telegram_ids.get(username)
@@ -184,7 +184,7 @@ def user_login(request: UserLoginRequest):
     if users.get(username) != password:
         raise HTTPException(status_code=401, detail="Invalid username or password")
 
-    data = db_get_data()
+    data = get_all_data()
     user_telegram_ids = data.get("user_telegram_ids", {})
 
     telegram_id = user_telegram_ids.get(username)
@@ -227,7 +227,7 @@ def user_register(request: UserRegisterRequest):
         raise HTTPException(status_code=400, detail="Residence is required")
 
     users = db_get("users", {})
-    data = db_get_data()
+    data = get_all_data()
 
     if username in users:
         raise HTTPException(status_code=400, detail="Username already exists")
