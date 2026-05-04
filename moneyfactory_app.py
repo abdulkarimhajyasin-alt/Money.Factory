@@ -95,7 +95,7 @@ user_timezone = {}                  # username -> IANA timezone مثل Europe/Vi
 
 pending_profit_capital_activation = {}  # username -> بيانات تفعيل رأس المال الجديد للربح بعد نهاية دورة السحب
 
-link_tokens = {}
+
 
 
 PLANS = {
