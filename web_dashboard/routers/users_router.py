@@ -72,16 +72,16 @@ async def link_telegram(token: str):
 <body style="font-family: Arial; text-align: center; padding-top: 80px;">
     <h2>✅ تم ربط حسابك بنجاح</h2>
     <p>يمكنك الآن تسجيل الدخول إلى لوحة المستخدم.</p>
-    <a href="/user-panel" style="
-        display:inline-block;
-        margin-top:20px;
-        padding:12px 24px;
-        background:#2563eb;
-        color:white;
-        text-decoration:none;
-        border-radius:8px;
-        font-weight:bold;
-    ">الانتقال إلى لوحة المستخدم</a>
+    <a href="/user" style="
+    display:inline-block;
+    margin-top:20px;
+    padding:12px 24px;
+    background:#2563eb;
+    color:white;
+    text-decoration:none;
+    border-radius:8px;
+    font-weight:bold;
+">الانتقال إلى لوحة المستخدم</a>
 </body>
 </html>
 """)
