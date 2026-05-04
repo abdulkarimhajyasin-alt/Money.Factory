@@ -4272,7 +4272,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             token = generate_link_token(user_id, username)
 
+            print("TOKEN GENERATED:", token)  # 🔥 مهم
+
             link_url = f"https://money-factory-dashboard.onrender.com/users/link-telegram?token={token}"
+
+            await update.message.reply_text(link_url)
 
             await update.message.reply_text(
                  f"👋 أهلاً بك {tg_first_name}{extra_msg}\n\n"
@@ -4284,9 +4288,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                  f"🔗 شاركه مع أصدقائك للاستفادة من نظام الإحالة.\n\n"
                  f"نتمنى لك تجربة موفقة 🚀"
                       )
-            await update.message.reply_text(
-                 f"🔗 الان يمكنك الانتقال الى موقنا الالكتروني لمتابعة الاشتراك وادارة حسابك للبدء في صناعة المال \n{link_url}",
-                                            reply_markup=main_menu_keyboard())
+            #await update.message.reply_text(
+                # f"🔗 الان يمكنك الانتقال الى موقنا الالكتروني لمتابعة الاشتراك وادارة حسابك للبدء في صناعة المال \n{link_url}",
+                                           # reply_markup=main_menu_keyboard())
         else:
             await update.message.reply_text("❌ اسم المستخدم أو كلمة المرور غير صحيحة")
         return
