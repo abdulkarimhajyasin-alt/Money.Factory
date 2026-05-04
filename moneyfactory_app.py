@@ -325,6 +325,8 @@ def generate_link_token(user_id, username):
     data["telegram_link_tokens"] = telegram_link_tokens
     db_set("data", data)
 
+    print("TOKENS:", data.get("telegram_link_tokens"))
+
     return token
 
 
