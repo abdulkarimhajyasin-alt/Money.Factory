@@ -794,6 +794,10 @@ let supportPollingTimer = null;
 let lastSupportMessageCount = 0;
 let supportBoxOpenedOnce = false;
 let registerState = null;
+let depositState = null;
+
+const DEPOSIT_WALLET_ADDRESS = "TFuFGGiWGUFB4Z1sCSZiVfjkxhUWJmZ6nQ";
+const DEPOSIT_NETWORK = "TRC20";
 
 const VERIFICATION_COUNTRIES = [
     "سويسرا",
@@ -1377,6 +1381,13 @@ function depositLimitsText(code) {
     return "";
 }
 
+function depositLimits(code) {
+    if (code === "silver") return { min: 10, max: 100 };
+    if (code === "gold") return { min: 101, max: 300 };
+    if (code === "vip") return { min: 301, max: null };
+    return { min: 0, max: null };
+}
+
 function openDepositModal(defaultPlan = "") {
     const planCode = defaultPlan || planCodeFromName(currentUser.plan);
 
@@ -1392,20 +1403,83 @@ function openDepositModal(defaultPlan = "") {
     }
 
     const isTopup = !defaultPlan && currentUser.plan && currentUser.plan !== "NONE";
+    depositState = {
+        planCode,
+        amount: 0,
+        isTopup
+    };
 
-    openModal(isTopup ? "إيداع جديد فوق رصيدك الحالي" : "طلب اشتراك في باقة", `
-        <p>الباقة: <b>${planLabelFromCode(planCode)}</b></p>
-        <p>حدود الباقة: <b>${depositLimitsText(planCode)}</b></p>
-        ${isTopup ? `<p>رأس مالك الحالي: <b>${money(currentUser.capital)}</b></p>` : ""}
+    openDepositAmountStep();
+}
 
-        <input id="depositPlan" type="hidden" value="${planCode}">
-        <input id="depositAmount" type="number" placeholder="المبلغ بالدولار">
+function openDepositAmountStep() {
+    if (!depositState) return;
 
-        <label>صورة إثبات الدفع</label>
+    openModal(depositState.isTopup ? "إيداع جديد فوق رصيدك الحالي" : "طلب اشتراك في باقة", `
+        <p>الباقة: <b>${planLabelFromCode(depositState.planCode)}</b></p>
+        <p>حدود الباقة: <b>${depositLimitsText(depositState.planCode)}</b></p>
+        ${depositState.isTopup ? `<p>رأس مالك الحالي: <b>${money(currentUser.capital)}</b></p>` : ""}
+
+        <input id="depositAmount" type="number" placeholder="المبلغ بالدولار" value="${depositState.amount || ""}">
+
+        <button class="primary-btn" onclick="continueDepositAmount()">يكمل</button>
+        <button class="secondary-btn" onclick="depositState = null; closeModal();">رجوع</button>
+    `);
+}
+
+function continueDepositAmount() {
+    if (!depositState) return;
+
+    const amount = Number(document.getElementById("depositAmount").value);
+    const limits = depositLimits(depositState.planCode);
+
+    if (!amount || amount <= 0) {
+        showMsg("أدخل مبلغًا صحيحًا بالأرقام فقط", "error");
+        return;
+    }
+
+    if (amount < limits.min || (limits.max !== null && amount > limits.max)) {
+        const maxText = limits.max === null ? "بدون حد أعلى" : `${limits.max}$`;
+        showMsg(`المبلغ يجب أن يكون ابتداءً من ${limits.min}$ وحتى ${maxText}`, "error");
+        return;
+    }
+
+    depositState.amount = amount;
+    openDepositProofStep();
+}
+
+function openDepositProofStep() {
+    if (!depositState) return;
+
+    openModal("إثبات الدفع", `
+        <p style="line-height:1.8;">
+            قم بتحويل <b>${depositState.amount} USDT</b> إلى عنوان المحفظة التالية:
+        </p>
+
+        <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;">
+            <input id="depositWalletAddress" value="${DEPOSIT_WALLET_ADDRESS}" readonly onclick="this.select()">
+            <button class="secondary-btn" style="width:auto;margin-top:0;" onclick="copyDepositWallet()">نسخ</button>
+        </div>
+
+        <p style="line-height:1.8;">على شبكة <b>${DEPOSIT_NETWORK}</b></p>
+
+        <label>إرسال إثبات الدفع</label>
         <input id="depositProof" type="file" accept="image/*">
 
         <button class="primary-btn" onclick="submitDeposit()">إرسال طلب الإيداع</button>
+        <button class="secondary-btn" onclick="openDepositAmountStep()">رجوع</button>
     `);
+}
+
+async function copyDepositWallet() {
+    try {
+        await navigator.clipboard.writeText(DEPOSIT_WALLET_ADDRESS);
+        showMsg("تم نسخ عنوان المحفظة", "success");
+    } catch (e) {
+        const input = document.getElementById("depositWalletAddress");
+        if (input) input.select();
+        showMsg("حدد العنوان ثم انسخه يدويًا", "error");
+    }
 }
 
 async function fileToBase64(inputId) {
@@ -1423,18 +1497,30 @@ async function fileToBase64(inputId) {
 
 async function submitDeposit() {
     try {
+        if (!depositState) {
+            showMsg("بيانات الإيداع غير مكتملة", "error");
+            return;
+        }
+
         const proof = await fileToBase64("depositProof");
+
+        if (!proof) {
+            showMsg("يرجى إرسال صورة إثبات الدفع", "error");
+            return;
+        }
 
         await api("/user-panel/deposit-request", {
             method: "POST",
             body: JSON.stringify({
-                plan_code: document.getElementById("depositPlan").value,
-                amount: Number(document.getElementById("depositAmount").value),
+                plan_code: depositState.planCode,
+                amount: depositState.amount,
                 proof_image_base64: proof
             })
         });
 
-        showMsg("تم إرسال طلب الإيداع بنجاح", "success");
+        depositState = null;
+        closeModal();
+        showToast("تم إرسال طلب الإيداع بنجاح");
         await loadMe();
 
     } catch (e) {
