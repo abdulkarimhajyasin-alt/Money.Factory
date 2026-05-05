@@ -2399,6 +2399,18 @@ function usersFilterModal() {
     `);
 }
 
+function deleteUserModal() {
+    openModal("حذف مستخدم", `
+        <p style="color:#fecaca;margin-top:0;">
+            تحذير: سيتم حذف حساب المستخدم وبياناته نهائيًا من النظام.
+        </p>
+        <input id="deleteUsernameInput" type="text" placeholder="اسم المستخدم" autocomplete="off">
+        <button class="danger-btn" style="width:100%;margin-top:10px;" onclick="confirmDeleteUser()">
+            حذف المستخدم نهائيًا
+        </button>
+    `);
+}
+
 function planMessageModal() {
     openModal("📨 إرسال رسالة حسب الباقة", `
         <select id="planMessagePlan">

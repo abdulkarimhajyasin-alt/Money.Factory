@@ -1273,7 +1273,7 @@ def delete_user(
         "full_name": data.get("user_full_name", {}).get(username),
         "residence": data.get("user_residence", {}).get(username),
         "verification_text": "موثق" if data.get("verified_users", {}).get(username) else "غير موثق",
-        "status_before_delete": data.get("user_status", {}).get(username),
+        "status_before_delete": data.get("user_statuses", {}).get(username, "active"),
         "plan_before_delete": data.get("user_plans", {}).get(username),
         "capital_before_delete": data.get("user_deposits", {}).get(username, 0),
         "balance_before_delete": data.get("user_balance", {}).get(username, 0),
@@ -1305,7 +1305,7 @@ def delete_user(
         profit_only = 0
 
     verification_text = "موثق ✅" if data.get("verified_users", {}).get(username) else "غير موثق ❌"
-    status_text = data.get("user_status", {}).get(username, "غير معروف")
+    status_text = data.get("user_statuses", {}).get(username, "active")
 
     # مبدئياً بدون طلبات معلقة (نضيفها لاحقاً إذا أردت ربطها مع البوت)
     pending_requests_summary = "تم الحذف من الداشبورد"
@@ -1338,7 +1338,7 @@ def delete_user(
     users.pop(username, None)
 
     for key in [
-        "user_balance", "user_deposits", "user_plans", "user_status",
+        "user_balance", "user_deposits", "user_plans", "user_statuses",
         "user_telegram_ids", "user_full_name", "user_residence",
         "user_last_profit", "user_withdraw_logs", "user_deposit_logs",
         "verified_users", "user_referrer", "referral_bonus_paid",
@@ -1351,7 +1351,8 @@ def delete_user(
 
     if target_user_id:
        logged_in_users.pop(str(target_user_id), None)
-       logged_in_users.pop(int(target_user_id), None)
+       if str(target_user_id).isdigit():
+           logged_in_users.pop(int(target_user_id), None)
 
     data["logged_in_users"] = logged_in_users    
 
