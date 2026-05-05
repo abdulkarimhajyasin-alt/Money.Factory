@@ -645,8 +645,6 @@
                     <thead>
                     <tr>
                         <th>Username</th>
-                        <th>Password</th>
-                        <th>Telegram ID</th>
                         <th>Name</th>
                         <th>Country</th>
                         <th>Plan</th>
@@ -1211,8 +1209,6 @@ function userRowHtml(u, level, parent) {
                 ${level ? indent + "↳ " : ""}
                 <button class="btn-blue" onclick="openUserDetails('${jsSafe(u.username)}')">${safeText(u.username)}</button>
             </td>
-            <td>${safeText(u.password)}</td>
-            <td>${safeText(u.telegram_id)}</td>
             <td>${safeText(u.full_name)}</td>
             <td>${safeText(u.residence)}</td>
             <td>${safeText(u.plan)}</td>
