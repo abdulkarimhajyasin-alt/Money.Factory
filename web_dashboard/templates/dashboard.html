@@ -718,7 +718,7 @@
                 <table>
                     <thead>
                     <tr>
-                        <th>User ID</th><th>Username</th><th>Name</th><th>Residence</th><th>Telegram</th><th>Time</th><th>Front</th><th>Back</th>
+                        <th>User ID</th><th>Username</th><th>Name</th><th>Residence</th><th>Time</th><th>Front</th><th>Back</th><th>Actions</th>
                     </tr>
                     </thead>
                     <tbody id="verificationRequestsBody"></tbody>
@@ -889,7 +889,8 @@ function updateFinancialRequestsCount(d) {
     const count =
         Number(d.pending_deposits || 0) +
         Number(d.pending_withdraws || 0) +
-        Number(d.pending_capital_withdraws || 0);
+        Number(d.pending_capital_withdraws || 0) +
+        Number(d.pending_verifications || 0);
 
     if (count > 0) {
         badge.innerText = count;
@@ -1565,10 +1566,13 @@ async function loadVerificationRequests() {
                 <td>${safeText(item.username)}</td>
                 <td>${safeText(item.full_name)}</td>
                 <td>${safeText(item.residence)}</td>
-                <td>${safeText(item.telegram_username)}</td>
                 <td>${safeText(item.time)}</td>
                 <td>${item.front_id_url ? `<img class="img-thumb" src="${item.front_id_url}" onclick="showImage('${item.front_id_url}')">` : "—"}</td>
                 <td>${item.back_id_url ? `<img class="img-thumb" src="${item.back_id_url}" onclick="showImage('${item.back_id_url}')">` : "—"}</td>
+                <td>
+                    <button class="btn-green" onclick="approveVerification('${jsSafe(item.user_id)}')">Approve</button>
+                    <button class="btn-red" onclick="rejectVerification('${jsSafe(item.user_id)}')">Reject</button>
+                </td>
             </tr>
         `);
     });
@@ -1621,6 +1625,26 @@ async function capitalPaid(userId) {
         body: JSON.stringify({user_id: Number(userId)})
     });
     alert("تم تأكيد الدفع");
+    await refreshAll();
+}
+
+async function approveVerification(userId) {
+    if (!confirm("الموافقة على طلب التوثيق؟")) return;
+    await api("/financial/approve-verification", {
+        method: "POST",
+        body: JSON.stringify({user_id: Number(userId)})
+    });
+    alert("تمت الموافقة على التوثيق");
+    await refreshAll();
+}
+
+async function rejectVerification(userId) {
+    if (!confirm("رفض طلب التوثيق؟")) return;
+    await api("/financial/reject-verification", {
+        method: "POST",
+        body: JSON.stringify({user_id: Number(userId)})
+    });
+    alert("تم رفض التوثيق");
     await refreshAll();
 }
 

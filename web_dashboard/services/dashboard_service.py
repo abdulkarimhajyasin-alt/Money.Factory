@@ -13,6 +13,7 @@ def build_dashboard_summary():
     pending_deposit_requests = data.get("pending_deposit_requests", {})
     pending_withdraw_requests = data.get("pending_withdraw_requests", {})
     capital_withdraw_requests = data.get("capital_withdraw_requests", {})
+    pending_verification_requests = data.get("pending_verification_requests", {})
 
     total_users = len(users)
     verified_count = sum(1 for username in users if bool(verified_users.get(username, False)))
@@ -46,6 +47,7 @@ def build_dashboard_summary():
         "pending_deposits": len(pending_deposit_requests),
         "pending_withdraws": len(pending_withdraw_requests),
         "pending_capital_withdraws": len(capital_withdraw_requests),
+        "pending_verifications": len(pending_verification_requests),
         "subscriptions_open": data.get("subscriptions_open", True),
         "bot_maintenance_mode": data.get("bot_maintenance_mode", False),
         "support_employees_enabled": data.get("support_employees_enabled", False),
