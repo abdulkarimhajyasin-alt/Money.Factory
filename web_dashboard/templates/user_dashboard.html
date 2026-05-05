@@ -681,11 +681,10 @@
 
             <div class="actions-grid">
                 <button class="action-card" onclick="openPlansModal()"><span>🥈</span> الباقات</button>
-                <button class="action-card" onclick="openMyPlanModal()"><span>📦</span> باقتي</button>
                 <button class="action-card" onclick="openReferralModal()"><span>👥</span> دعوة صديق</button>
                 <button class="action-card" onclick="openDepositModal()"><span>➕</span> إيداع جديد</button>
                 <button class="action-card" onclick="openWithdrawModal()"><span>💸</span> سحب الأرباح</button>
-                <button class="action-card" onclick="openCapitalWithdrawModal()"><span>🏦</span> سحب رأس المال</button>
+                <button class="action-card" onclick="openCapitalWithdrawModal()"><span>🏦</span> سحب رأس المال وإيقاف الربح</button>
                 <button class="action-card" onclick="openVerificationModal()"><span>🪪</span> توثيق الحساب</button>
                 <button class="action-card" onclick="openTransactionsModal()"><span>📜</span> سجل العمليات</button>
                 <button class="action-card" onclick="openPasswordModal()"><span>🔐</span> تغيير كلمة المرور</button>
@@ -1266,18 +1265,6 @@ function choosePlan(code) {
     openDepositModal(code);
 }
 
-function openMyPlanModal() {
-    openModal("باقتي", `
-        <p>📦 الباقة الحالية: <b>${currentUser.plan}</b></p>
-        <p>💰 رأس المال: <b>${money(currentUser.capital)}</b></p>
-        <p>📈 الرصيد: <b>${money(currentUser.balance)}</b></p>
-        <p>💵 الأرباح: <b>${money(currentUser.profit_only)}</b></p>
-        <p>🪙 الربح اليومي: <b>${money(currentUser.daily_profit)}</b></p>
-        <p>📉 الحد الأدنى للسحب: <b>${money(currentUser.min_withdraw)}</b></p>
-        
-    `);
-}
-
 function openReferralModal() {
     openModal("دعوة صديق", `
         <p>👥 عدد المدعوين: <b>${currentUser.children_count}</b></p>
@@ -1296,10 +1283,49 @@ function openReferralModal() {
     `);
 }
 
-function openDepositModal(defaultPlan = "") {
-    openModal("إيداع جديد", `
-        
+function planCodeFromName(plan) {
+    if (plan === "الباقة الفضية") return "silver";
+    if (plan === "الباقة الذهبية") return "gold";
+    if (plan === "باقة VIP") return "vip";
+    return "";
+}
 
+function planLabelFromCode(code) {
+    if (code === "silver") return "الباقة الفضية";
+    if (code === "gold") return "الباقة الذهبية";
+    if (code === "vip") return "باقة VIP";
+    return "غير محدد";
+}
+
+function depositLimitsText(code) {
+    if (code === "silver") return "من 10$ إلى 100$";
+    if (code === "gold") return "من 101$ إلى 300$";
+    if (code === "vip") return "من 301$ فما فوق";
+    return "";
+}
+
+function openDepositModal(defaultPlan = "") {
+    const planCode = defaultPlan || planCodeFromName(currentUser.plan);
+
+    if (!planCode) {
+        openModal("إيداع جديد", `
+            <p style="color:#fecaca;line-height:1.8;">
+                لا توجد لديك باقة مفعلة حاليًا.<br>
+                لإضافة رصيد يجب أن تختار باقة أولًا من زر الباقات.
+            </p>
+            <button class="primary-btn" onclick="closeModal(); openPlansModal();">فتح الباقات</button>
+        `);
+        return;
+    }
+
+    const isTopup = !defaultPlan && currentUser.plan && currentUser.plan !== "NONE";
+
+    openModal(isTopup ? "إيداع جديد فوق رصيدك الحالي" : "طلب اشتراك في باقة", `
+        <p>الباقة: <b>${planLabelFromCode(planCode)}</b></p>
+        <p>حدود الباقة: <b>${depositLimitsText(planCode)}</b></p>
+        ${isTopup ? `<p>رأس مالك الحالي: <b>${money(currentUser.capital)}</b></p>` : ""}
+
+        <input id="depositPlan" type="hidden" value="${planCode}">
         <input id="depositAmount" type="number" placeholder="المبلغ بالدولار">
 
         <label>صورة إثبات الدفع</label>

@@ -747,6 +747,13 @@ def create_deposit_request(
 
     req_type = "new_deposit" if current_plan in [None, "NONE"] else "topup_deposit"
 
+    if req_type == "new_deposit" and not data.get("subscriptions_open", True):
+        raise HTTPException(status_code=400, detail="Subscriptions are currently closed")
+
+    capital_requests = data.get("capital_withdraw_requests", {})
+    if str(user_id) in capital_requests or user_id in capital_requests:
+        raise HTTPException(status_code=400, detail="You have a pending capital withdraw request")
+
     pending[str(user_id)] = {
         "username": username,
         "amount": amount,
