@@ -308,6 +308,73 @@ def get_profit_only(data, username):
     profit = round(get_balance(data, username) - get_capital(data, username), 2)
     return profit if profit > 0 else 0
 
+def get_request_by_user_id(data, key, user_id):
+    requests = data.get(key, {})
+    if not isinstance(requests, dict) or not user_id:
+        return None
+    return requests.get(str(user_id)) or requests.get(user_id)
+
+
+def get_delete_account_warnings(data, username, user_id):
+    warnings = []
+
+    if get_request_by_user_id(data, "pending_deposit_requests", user_id):
+        warnings.append("لديك طلب إيداع معلق بانتظار المراجعة.")
+
+    if get_request_by_user_id(data, "pending_withdraw_requests", user_id):
+        warnings.append("لديك طلب سحب أرباح معلق بانتظار المراجعة.")
+
+    if get_request_by_user_id(data, "capital_withdraw_requests", user_id):
+        warnings.append("لديك طلب سحب رأس مال معلق ولم ينته بعد.")
+
+    if get_request_by_user_id(data, "pending_verification_requests", user_id):
+        warnings.append("لديك طلب توثيق حساب قيد المراجعة.")
+
+    return warnings
+
+
+def get_pending_requests_summary(data, user_id):
+    lines = []
+
+    deposit_request = get_request_by_user_id(data, "pending_deposit_requests", user_id)
+    if deposit_request:
+        lines.append(
+            "طلب إيداع معلق:\n"
+            f"- الباقة: {deposit_request.get('plan', 'غير معروف')}\n"
+            f"- المبلغ: {deposit_request.get('amount', 0)}$"
+        )
+
+    withdraw_request = get_request_by_user_id(data, "pending_withdraw_requests", user_id)
+    if withdraw_request:
+        lines.append(
+            "طلب سحب أرباح معلق:\n"
+            f"- الباقة: {withdraw_request.get('plan', 'غير معروف')}\n"
+            f"- المبلغ: {withdraw_request.get('amount', 0)}$\n"
+            f"- وقت الطلب: {withdraw_request.get('time', 'غير متوفر')}"
+        )
+
+    capital_request = get_request_by_user_id(data, "capital_withdraw_requests", user_id)
+    if capital_request:
+        lines.append(
+            "طلب سحب رأس مال معلق:\n"
+            f"- المبلغ: {round(float(capital_request.get('amount', 0)), 2)}$\n"
+            f"- وقت الطلب: {capital_request.get('request_time', 'غير متوفر')}\n"
+            f"- موعد الاستحقاق: {capital_request.get('due_time', 'غير متوفر')}"
+        )
+
+    verification_request = get_request_by_user_id(data, "pending_verification_requests", user_id)
+    if verification_request:
+        lines.append(
+            "طلب توثيق حساب قيد المراجعة:\n"
+            f"- الاسم: {verification_request.get('full_name', 'غير متوفر')}\n"
+            f"- الدولة: {verification_request.get('residence', 'غير متوفر')}"
+        )
+
+    if not lines:
+        return "لا توجد طلبات معلقة وقت حذف الحساب."
+
+    return "\n\n".join(lines)
+
 
 def get_next_profit_data(data, username):
     now_ts = time.time()
@@ -413,8 +480,9 @@ class VerificationRequest(BaseModel):
 
 
 class DeleteAccountRequest(BaseModel):
-    password: str
-    confirm_text: str
+    password: str | None = None
+    confirm_text: str | None = None
+    confirm_delete: bool = False
 
 
 @router.get("/me")
@@ -1061,6 +1129,32 @@ def create_verification_request(
     }
 
 
+@router.get("/delete-account-preview")
+def get_delete_account_preview(username: str = Depends(get_current_user)):
+    users, data = load_storage()
+    user_id = get_telegram_id(data, username)
+
+    if get_status(data, username) == "banned":
+        raise HTTPException(status_code=400, detail="This account is banned")
+
+    balance = get_balance(data, username)
+    capital = get_capital(data, username)
+
+    return {
+        "username": username,
+        "telegram_id": user_id,
+        "full_name": data.get("user_full_name", {}).get(username, "غير متوفر"),
+        "residence": data.get("user_residence", {}).get(username, "غير متوفر"),
+        "status": get_status(data, username),
+        "plan": data.get("user_plans", {}).get(username, "NONE"),
+        "capital": capital,
+        "balance": balance,
+        "profit_only": get_profit_only(data, username),
+        "warnings": get_delete_account_warnings(data, username, user_id),
+        "pending_requests_summary": get_pending_requests_summary(data, user_id),
+    }
+
+
 @router.post("/delete-account")
 def delete_my_account(
     request: DeleteAccountRequest,
@@ -1068,13 +1162,21 @@ def delete_my_account(
 ):
     users, data = load_storage()
 
-    if not verify_password(users.get(username), request.password):
-        raise HTTPException(status_code=400, detail="Password is incorrect")
+    if not request.confirm_delete and (request.confirm_text or "").strip().upper() != "DELETE":
+        raise HTTPException(status_code=400, detail="Delete confirmation is required")
 
-    if request.confirm_text.strip().upper() != "DELETE":
-        raise HTTPException(status_code=400, detail="Confirmation text must be DELETE")
+    if request.password:
+        if not verify_password(users.get(username), request.password):
+            raise HTTPException(status_code=400, detail="Password is incorrect")
+
+    if get_status(data, username) == "banned":
+        raise HTTPException(status_code=400, detail="This account is banned")
 
     user_id = get_telegram_id(data, username)
+    balance = get_balance(data, username)
+    capital = get_capital(data, username)
+    profit_only = get_profit_only(data, username)
+    pending_requests_summary = get_pending_requests_summary(data, user_id)
 
     deleted_accounts_log = data.get("deleted_accounts_log", [])
 
@@ -1085,9 +1187,10 @@ def delete_my_account(
         "residence": data.get("user_residence", {}).get(username, "غير متوفر"),
         "status_before_delete": get_status(data, username),
         "plan_before_delete": data.get("user_plans", {}).get(username, "NONE"),
-        "capital_before_delete": get_capital(data, username),
-        "balance_before_delete": get_balance(data, username),
-        "profit_only_before_delete": get_profit_only(data, username),
+        "capital_before_delete": capital,
+        "balance_before_delete": balance,
+        "profit_only_before_delete": profit_only,
+        "pending_requests_summary": pending_requests_summary,
         "deleted_at": now_str(),
         "source": "web_user_dashboard"
     })
@@ -1121,7 +1224,8 @@ def delete_my_account(
         "user_identity_photos",
         "user_timezone",
         "pending_profit_capital_activation",
-        "web_identity_images"
+        "web_identity_images",
+        "support_chat_messages"
     ]
 
     for key in keys_by_username:
@@ -1152,6 +1256,21 @@ def delete_my_account(
 
     save_users(users)
     save_data(data)
+
+    if user_id:
+        admin_text = (
+            "🗑 قام مستخدم بحذف حسابه من لوحة الويب\n\n"
+            f"👤 اسم المستخدم: {username}\n"
+            f"🆔 Telegram ID: {user_id}\n"
+            f"📌 الحالة قبل الحذف: {deleted_accounts_log[-1].get('status_before_delete', 'غير متوفر')}\n"
+            f"📦 الباقة قبل الحذف: {deleted_accounts_log[-1].get('plan_before_delete', 'غير متوفر')}\n"
+            f"💰 رأس المال قبل الحذف: {capital}$\n"
+            f"📈 الرصيد قبل الحذف: {balance}$\n"
+            f"💵 الأرباح فقط قبل الحذف: {profit_only}$\n"
+            f"🕒 وقت الحذف: {deleted_accounts_log[-1].get('deleted_at', 'غير متوفر')}\n\n"
+            f"📋 الطلبات المعلقة وقت الحذف:\n{pending_requests_summary}"
+        )
+        send_telegram_message(ADMIN_ID, admin_text)
 
     return {
         "success": True,

@@ -1897,13 +1897,39 @@ function startSupportPolling() {
     }, 5000);
 }
 
-function openDeleteModal() {
-    openModal("حذف الحساب", `
-        <p style="color:#fecaca;">تحذير: سيتم حذف حسابك وبياناتك نهائيًا.</p>
-        <input id="deletePassword" type="password" placeholder="كلمة المرور">
-        <input id="deleteConfirm" placeholder="اكتب DELETE للتأكيد">
-        <button class="danger-btn" onclick="submitDelete()">حذف الحساب نهائيًا</button>
-    `);
+async function openDeleteModal() {
+    try {
+        const preview = await api("/user-panel/delete-account-preview");
+        const warnings = preview.warnings || [];
+        const warningsHtml = warnings.length
+            ? `<div style="color:#facc15;line-height:1.8;margin:12px 0;">
+                <b>تنبيه إضافي قبل الحذف:</b><br>
+                ${warnings.map(item => `- ${escapeHtml(item)}`).join("<br>")}
+                <br><br>عند حذف الحساب سيتم حذف هذه الطلبات أيضًا نهائيًا من داخل النظام.
+               </div>`
+            : "";
+
+        openModal("حذف الحساب", `
+            <p style="color:#fecaca;line-height:1.8;">
+                تنبيه هام جدًا!!<br><br>
+                سيتم حذف حسابك بما فيه جميع بياناتك نهائيًا، ولن تستطيع الوصول إليها مجددًا.
+            </p>
+            ${warningsHtml}
+            <div style="background:rgba(15,23,42,0.88);border:1px solid rgba(255,255,255,0.14);border-radius:16px;padding:12px;line-height:1.8;margin:12px 0;">
+                <b>ملخص الحساب قبل الحذف</b><br>
+                اسم المستخدم: ${escapeHtml(preview.username)}<br>
+                الباقة: ${escapeHtml(preview.plan)}<br>
+                رأس المال: ${money(preview.capital)}<br>
+                الرصيد: ${money(preview.balance)}<br>
+                الأرباح فقط: ${money(preview.profit_only)}
+            </div>
+            <p style="color:#cbd5e1;">إذا كنت متأكدًا اضغط على تأكيد حذف الحساب، أو اضغط رجوع للتراجع.</p>
+            <button class="danger-btn" style="width:100%;margin-top:10px;" onclick="submitDelete()">تأكيد حذف الحساب</button>
+            <button class="secondary-btn" onclick="closeModal()">رجوع</button>
+        `);
+    } catch (e) {
+        openModal("حذف الحساب", `<p class="error">${escapeHtml(e.message)}</p>`);
+    }
 }
 
 async function submitDelete() {
@@ -1911,12 +1937,11 @@ async function submitDelete() {
         await api("/user-panel/delete-account", {
             method: "POST",
             body: JSON.stringify({
-                password: document.getElementById("deletePassword").value,
-                confirm_text: document.getElementById("deleteConfirm").value
+                confirm_delete: true
             })
         });
 
-        alert("تم حذف الحساب");
+        alert("تم حذف حسابك وجميع بياناتك بنجاح");
         logoutUser();
 
     } catch (e) {
