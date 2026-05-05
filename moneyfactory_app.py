@@ -4,23 +4,30 @@ import time
 import asyncio
 import os
 import random
+import sys
+import bcrypt
 import requests
 from urllib.parse import quote
 from datetime import datetime
 from zoneinfo import ZoneInfo
-import psycopg2
-from psycopg2.extras import RealDictCursor
-from psycopg2.pool import ThreadedConnectionPool
 from telegram import ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     ApplicationBuilder,
-    CommandHandler,
-    MessageHandler,
-    CallbackQueryHandler,
     ContextTypes,
-    filters,
 )
 from dotenv import load_dotenv
+from database_logic import db_get, db_set, init_db, init_db_pool
+from finance_logic import (
+    SECONDS_PER_DAY,
+    calculate_daily_profit,
+    calculate_days_passed,
+    calculate_elapsed_profit,
+    calculate_min_withdraw,
+    calculate_profit_only,
+    round_money,
+)
+import support_system
+from telegram_handlers import register_telegram_handlers
 load_dotenv()
 
 # =========================
@@ -28,7 +35,13 @@ load_dotenv()
 # =========================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
-ADMIN_IDS = [5685737658]
+
+def parse_env_int_list(name, default):
+    raw_value = os.getenv(name, default)
+    return [int(value.strip()) for value in raw_value.split(",") if value.strip()]
+
+
+ADMIN_IDS = parse_env_int_list("ADMIN_IDS", "5685737658")
 ADMIN_ID = ADMIN_IDS[0]
 
 # =========================
@@ -36,13 +49,39 @@ ADMIN_ID = ADMIN_IDS[0]
 # أضف Telegram User ID لكل موظف دعم هنا
 # الموظف يبقى مستخدمًا عاديًا ولا يحصل على صلاحيات أدمن
 # =========================
-SUPPORT_EMPLOYEE_IDS = [5102448932]
+SUPPORT_EMPLOYEE_IDS = parse_env_int_list("SUPPORT_EMPLOYEE_IDS", "5102448932")
 
 DATA_FILE = "data.json"
 
 BOT_USERNAME = "Moneyfactory1bot"
 
-db_pool = None
+
+def hash_password(password):
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def is_bcrypt_hash(value):
+    return isinstance(value, str) and value.startswith(("$2a$", "$2b$", "$2y$"))
+
+
+def verify_password(stored_password, provided_password):
+    if not isinstance(stored_password, str):
+        return False
+
+    if is_bcrypt_hash(stored_password):
+        return bcrypt.checkpw(provided_password.encode("utf-8"), stored_password.encode("utf-8"))
+
+    return stored_password == provided_password
+
+
+def password_needs_rehash(stored_password):
+    return not is_bcrypt_hash(stored_password)
+
+
+def password_display_value(stored_password):
+    if stored_password == "غير متوفر":
+        return stored_password
+    return "محفوظة بشكل آمن"
 
 
 users = {}
@@ -485,132 +524,6 @@ def migrate_old_users_timezones():
         save_data()   
     
 # =========================
-# PostgreSQL Storage - Connection Pool
-# =========================
-def init_db_pool():
-    global db_pool
-
-    if not DATABASE_URL:
-        raise ValueError("DATABASE_URL غير موجود. تأكد من إضافته داخل Render Environment.")
-
-    if db_pool is None:
-        db_pool = ThreadedConnectionPool(
-            minconn=1,
-            maxconn=5,
-            dsn=DATABASE_URL,
-            cursor_factory=RealDictCursor
-        )
-
-
-def get_db_connection():
-    global db_pool
-
-    if db_pool is None:
-        init_db_pool()
-
-    return db_pool.getconn()
-
-
-def release_db_connection(conn):
-    global db_pool
-
-    if db_pool is not None and conn is not None:
-        db_pool.putconn(conn)
-
-
-def close_db_pool():
-    global db_pool
-
-    if db_pool is not None:
-        db_pool.closeall()
-        db_pool = None
-
-
-def init_db():
-    conn = None
-    cur = None
-
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS bot_storage (
-                key TEXT PRIMARY KEY,
-                value JSONB NOT NULL
-            );
-        """)
-
-        conn.commit()
-
-    except Exception as e:
-        if conn:
-            conn.rollback()
-        print(f"خطأ في init_db: {e}")
-        raise
-
-    finally:
-        if cur:
-            cur.close()
-        release_db_connection(conn)
-
-
-def db_get(key, default_value):
-    conn = None
-    cur = None
-
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-
-        cur.execute("SELECT value FROM bot_storage WHERE key = %s;", (key,))
-        row = cur.fetchone()
-
-        if row:
-            return row["value"]
-
-        return default_value
-
-    except Exception as e:
-        print(f"خطأ في db_get للعنصر {key}: {e}")
-        return default_value
-
-    finally:
-        if cur:
-            cur.close()
-        release_db_connection(conn)
-
-
-def db_set(key, value):
-    conn = None
-    cur = None
-
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-
-        cur.execute("""
-            INSERT INTO bot_storage (key, value)
-            VALUES (%s, %s::jsonb)
-            ON CONFLICT (key)
-            DO UPDATE SET value = EXCLUDED.value;
-        """, (key, json.dumps(value, ensure_ascii=False)))
-
-        conn.commit()
-
-    except Exception as e:
-        if conn:
-            conn.rollback()
-        print(f"خطأ في db_set للعنصر {key}: {e}")
-        raise
-
-    finally:
-        if cur:
-            cur.close()
-        release_db_connection(conn)    
-    
-
-# =========================
 # تحميل / حفظ البيانات
 # =========================
 def load_users():
@@ -675,6 +588,8 @@ def load_data():
     pending_verification_requests = {
         int(k): v for k, v in data.get("pending_verification_requests", {}).items()
     }
+    for request in pending_verification_requests.values():
+        request.pop("password", None)
 
     user_residence = data.get("user_residence", {})
     user_full_name = data.get("user_full_name", {})
@@ -781,74 +696,47 @@ def reload_storage_from_db():
         print(f"[RELOAD_STORAGE_ERROR] {e}")    
 
 def is_support_blocked(username):
-    return bool(support_blocked_users.get(username, False))
+    return support_system.is_support_blocked(support_blocked_users, username)
 
 
 def get_support_status_text(username):
-    return "محجوب من الدعم 🚫" if is_support_blocked(username) else "مسموح له بالدعم ✅"
+    return support_system.get_support_status_text(support_blocked_users, username)
+
 
 # =========================
 # نظام موظفي الدعم
 # =========================
 def is_support_employee(user_id):
-    try:
-        return int(user_id) in [int(x) for x in SUPPORT_EMPLOYEE_IDS]
-    except:
-        return False
+    return support_system.is_support_employee(SUPPORT_EMPLOYEE_IDS, user_id)
 
 
 def is_support_operator(user_id):
-    try:
-        return int(user_id) == int(ADMIN_ID) or is_support_employee(user_id)
-    except:
-        return False
+    return support_system.is_support_operator(ADMIN_ID, SUPPORT_EMPLOYEE_IDS, user_id)
 
 
 def get_support_operator_text(user_id):
-    if int(user_id) == int(ADMIN_ID):
-        return "المدير"
-    if is_support_employee(user_id):
-        return "موظف دعم"
-    return "غير مصرح"
+    return support_system.get_support_operator_text(ADMIN_ID, SUPPORT_EMPLOYEE_IDS, user_id)
 
 
 def get_support_employees_status_text():
-    return "مفعّل ✅" if support_employees_enabled else "متوقف ⛔"
+    return support_system.get_support_employees_status_text(support_employees_enabled)
 
 
 def cleanup_expired_support_claim(username):
-    claim = support_claims.get(username)
-
-    if not claim:
-        return
-
-    expires_at = float(claim.get("expires_at", 0))
-
-    if time.time() >= expires_at:
-        support_claims.pop(username, None)
+    if support_system.cleanup_expired_support_claim(support_claims, username):
         save_data()
 
 
 def has_active_support_claim(username):
-    cleanup_expired_support_claim(username)
-    return username in support_claims
+    return support_system.has_active_support_claim(support_claims, username)
 
 
 def get_support_claim_employee_id(username):
-    if not has_active_support_claim(username):
-        return None
-
-    try:
-        return int(support_claims[username].get("employee_id"))
-    except:
-        return None
+    return support_system.get_support_claim_employee_id(support_claims, username)
 
 
 def claim_support_user(username, employee_id):
-    support_claims[username] = {
-        "employee_id": int(employee_id),
-        "expires_at": time.time() + (15 * 60)
-    }
+    support_system.claim_support_user(support_claims, username, employee_id)
     save_data()
 
 
@@ -859,26 +747,13 @@ def build_support_reply_keyboard(user_id):
 
 
 def get_support_recipients_for_user(username):
-    recipients = [int(ADMIN_ID)]
-
-    if support_employees_enabled:
-        if has_active_support_claim(username):
-            employee_id = get_support_claim_employee_id(username)
-            if employee_id:
-                recipients.append(int(employee_id))
-        else:
-            for employee_id in SUPPORT_EMPLOYEE_IDS:
-                try:
-                    recipients.append(int(employee_id))
-                except:
-                    pass
-
-    unique_recipients = []
-    for recipient_id in recipients:
-        if recipient_id not in unique_recipients:
-            unique_recipients.append(recipient_id)
-
-    return unique_recipients
+    return support_system.get_support_recipients_for_user(
+        ADMIN_ID,
+        SUPPORT_EMPLOYEE_IDS,
+        support_employees_enabled,
+        support_claims,
+        username,
+    )
 
 
 async def delete_support_message_from_other_employees(context, target_user_id, keep_employee_id):
@@ -1012,13 +887,12 @@ def get_saved_telegram_id(username):
 
 
 def get_user_total_balance(username):
-    return round(float(user_balance.get(username, 0)), 2)
+    return round_money(user_balance.get(username, 0))
 
 def get_user_profit_only(username):
     capital = get_user_capital(username)
     balance = get_user_total_balance(username)
-    profit_only = round(balance - capital, 2)
-    return profit_only if profit_only > 0 else 0.0
+    return calculate_profit_only(balance, capital)
 
 def get_profit_capital_for_user(username):
     pending_data = pending_profit_capital_activation.get(username)
@@ -1039,13 +913,11 @@ def get_profit_capital_for_user(username):
 
 def get_daily_profit_amount(username):
     capital = get_profit_capital_for_user(username)
-    if capital <= 0:
-        return 0.0
-    return round(capital * 0.02, 2)
+    return calculate_daily_profit(capital)
 
 def get_min_withdraw_amount(username):
     capital = get_user_capital(username)
-    return round(capital * 0.20, 2)
+    return calculate_min_withdraw(capital)
 
 def update_profit(username):
     if username not in user_deposits:
@@ -1060,39 +932,23 @@ def update_profit(username):
 
     now = time.time()
     last_time = float(user_last_profit.get(username, now))
-    days_passed = int((now - last_time) // 86400)
+    days_passed = calculate_days_passed(last_time, now)
 
     if days_passed <= 0:
         return
 
     pending_data = pending_profit_capital_activation.get(username)
-    total_profit = 0.0
-    activated_during_update = False
-
-    for day_index in range(1, days_passed + 1):
-        profit_day_time = last_time + (day_index * 86400)
-
-        if pending_data:
-            activate_at = float(pending_data.get("activate_at", 0))
-            old_capital = float(pending_data.get("old_capital", total_capital))
-
-            if profit_day_time < activate_at:
-                profit_capital = old_capital
-            else:
-                profit_capital = total_capital
-                activated_during_update = True
-        else:
-            profit_capital = total_capital
-
-        daily_profit = profit_capital * 0.02
-        total_profit += daily_profit
-
-    total_profit = round(total_profit, 2)
+    total_profit, activated_during_update = calculate_elapsed_profit(
+        last_time,
+        days_passed,
+        total_capital,
+        pending_data
+    )
 
     if total_profit > 0:
-        user_balance[username] = round(float(user_balance.get(username, 0)) + total_profit, 2)
+        user_balance[username] = round_money(float(user_balance.get(username, 0)) + total_profit)
 
-    user_last_profit[username] = last_time + (days_passed * 86400)
+    user_last_profit[username] = last_time + (days_passed * SECONDS_PER_DAY)
 
     if activated_during_update:
         pending_profit_capital_activation.pop(username, None)
@@ -1108,7 +964,7 @@ def update_profit(username):
 
 def get_next_profit_time(username):
     last_time = float(user_last_profit.get(username, time.time()))
-    next_time = last_time + 86400
+    next_time = last_time + SECONDS_PER_DAY
     return format_timestamp_for_user(next_time, username)
 
 def find_user_id_by_username(username):
@@ -1296,7 +1152,7 @@ def is_user_frozen(username):
     return get_user_status(username) == "frozen"
 
 def is_user_verified(username):
-    return bool(verified_users.get(username, False))
+    return username in verified_users and verified_users.get(username) is True
 
 def get_withdraw_interval_days(username):
     plan_name = user_plans.get(username)
@@ -1521,7 +1377,7 @@ def build_admin_user_text(username):
     update_profit(username)
     full_name = user_full_name.get(username, "غير متوفر")
     residence = user_residence.get(username, "غير متوفر")
-    password = users.get(username, "غير متوفر")
+    password = password_display_value(users.get(username, "غير متوفر"))
     verified_text = "موثق ✅" if verified_users.get(username, False) else "غير موثق ❌"
     referrer_name = get_referrer_of_user(username)
     invited_users = get_invited_users(username)
@@ -1873,6 +1729,10 @@ def build_my_plan_text(username, user_id):
         capital_withdraw_text = get_capital_withdraw_countdown_text(username)
         profit_status_text = "متوقف ⛔"
 
+    account_timezone_text = ""
+    if is_user_verified(username):
+        account_timezone_text = f"🌍 توقيت الحساب: {get_timezone_display_text(username)}\n"
+
     return (
     f"📦 باقتك الحالية: {plan}\n"
     f"📌 حالة الحساب: {get_status_text(username)} | {verification_text}\n"
@@ -1886,7 +1746,7 @@ def build_my_plan_text(username, user_id):
     f"📉 الحد الأدنى لسحب الأرباح: {min_withdraw}$\n"
     f"📌 طريقة حساب الحد الأدنى: 20% من رأس المال المودع\n"
     f"📊 حالة الربح: {profit_status_text}\n"
-    f"🌍 توقيت الحساب: {get_timezone_display_text(username)}\n"
+    f"{account_timezone_text}"
     f"⏰ موعد الربح القادم: {get_next_profit_time(username)}\n"
     f"💸 موعد السحب القادم: {next_withdraw_date}\n"
     f"⌛ العد التنازلي للسحب: {withdraw_countdown}\n"
@@ -3244,11 +3104,11 @@ async def resetpass(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ المستخدم غير موجود")
         return
 
-    old_password = users[username]
-    users[username] = new_password
+    old_password = password_display_value(users[username])
+    users[username] = hash_password(new_password)
     save_users()
 
-    add_transaction(username, "admin_reset_password", 0, f"تغيير كلمة المرور بواسطة الأدمن من {old_password} إلى {new_password}")
+    add_transaction(username, "admin_reset_password", 0, "تغيير كلمة المرور بواسطة الأدمن")
 
     user_id_found = find_user_id_by_username(username)
     if user_id_found:
@@ -3452,6 +3312,7 @@ def is_user_in_data_entry_state(user_id):
         "register_full_name",
         "register_username",
         "register_password",
+        "login_username",
         "login_password",
 
         # التوثيق
@@ -4166,7 +4027,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
            await update.message.reply_text("❌ كلمة المرور قصيرة جدًا، اجعلها 3 أحرف أو أكثر")
            return
 
-       users[username] = password
+       users[username] = hash_password(password)
        user_telegram_ids[username] = user_id
        user_plans[username] = "NONE"
        user_balance[username] = 0
@@ -4235,11 +4096,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
        return
 
     elif text == "تسجيل دخول":
-        user_states[user_id] = "login_username"
+        user_states[user_id] = {
+            "step": "login_username"
+        }
         await update.message.reply_text("أدخل اسم المستخدم:")
         return
 
-    elif user_states.get(user_id) == "login_username":
+    elif (
+        user_states.get(user_id) == "login_username"
+        or (
+            isinstance(user_states.get(user_id), dict)
+            and user_states[user_id].get("step") == "login_username"
+        )
+    ):
         user_states[user_id] = {
             "step": "login_password",
             "username": text
@@ -4251,7 +4120,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         username = user_states[user_id]["username"]
         password = text
 
-        if username in users and users[username] == password:
+        if username in users and verify_password(users[username], password):
+            if password_needs_rehash(users[username]):
+                users[username] = hash_password(password)
+                save_users()
+
             ensure_user_defaults(username)
 
             if is_user_banned(username):
@@ -4287,11 +4160,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                  f"{username}\n\n"
                  f"🔗 شاركه مع أصدقائك للاستفادة من نظام الإحالة.\n\n"
                  f"نتمنى لك تجربة موفقة 🚀"
+                 ,
+                 reply_markup=main_menu_keyboard()
                       )
             #await update.message.reply_text(
                 # f"🔗 الان يمكنك الانتقال الى موقنا الالكتروني لمتابعة الاشتراك وادارة حسابك للبدء في صناعة المال \n{link_url}",
                                            # reply_markup=main_menu_keyboard())
         else:
+            user_states.pop(user_id, None)
             await update.message.reply_text("❌ اسم المستخدم أو كلمة المرور غير صحيحة")
         return
     
@@ -4500,13 +4376,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         old_password_entered = text
         real_password = users.get(username)
 
-        if old_password_entered != real_password:
+        if not verify_password(real_password, old_password_entered):
             await update.message.reply_text("❌ كلمة المرور الحالية غير صحيحة")
             return
 
+        if password_needs_rehash(real_password):
+            users[username] = hash_password(old_password_entered)
+            save_users()
+
         user_states[user_id] = {
-            "step": "change_password_new",
-            "old_password": real_password
+            "step": "change_password_new"
         }
         await update.message.reply_text("أدخل كلمة المرور الجديدة:")
         return
@@ -4518,7 +4397,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         user_states[user_id] = {
             "step": "change_password_confirm",
-            "old_password": user_states[user_id]["old_password"],
             "new_password": text
         }
         await update.message.reply_text("أعد إدخال كلمة المرور الجديدة للتأكيد:")
@@ -4532,7 +4410,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("انتهت الجلسة، سجّل الدخول مجددًا عبر /k")
             return
 
-        old_password = user_states[user_id]["old_password"]
         new_password = user_states[user_id]["new_password"]
         confirm_password = text
 
@@ -4540,10 +4417,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ التأكيد غير مطابق لكلمة المرور الجديدة")
             return
 
-        users[username] = new_password
+        users[username] = hash_password(new_password)
         save_users()
 
-        add_transaction(username, "user_change_password", 0, f"قام المستخدم بتغيير كلمة المرور من {old_password} إلى {new_password}")
+        add_transaction(username, "user_change_password", 0, "قام المستخدم بتغيير كلمة المرور")
 
         user_states.pop(user_id, None)
 
@@ -4560,8 +4437,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text=(
                     f"🔐 قام المستخدم بتغيير كلمة المرور\n\n"
                     f"👤 اسم المستخدم: {username}\n"
-                    f"🔑 كلمة المرور القديمة: {old_password}\n"
-                    f"🔑 كلمة المرور الجديدة: {new_password}\n"
+                    f"🔑 تم تغيير كلمة المرور بنجاح\n"
                     f"📌 حالة الحساب: {get_status_text(username)}\n"
                     f"📦 الباقة: {plan}\n"
                     f"💰 رأس المال: {capital}$\n"
@@ -5477,10 +5353,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ لديك باقة مفعلة بالفعل ولا يمكنك الاشتراك بأكثر من باقة")
             return
 
-        if user_plans.get(username) not in [None, "NONE"]:
-            await update.message.reply_text("❌ لديك باقة مفعلة بالفعل ولا يمكنك الاشتراك بأكثر من باقة")
-            return
-
         if user_id in pending_deposit_requests:
             await update.message.reply_text("⏳ لديك طلب إيداع معلق بالفعل بانتظار مراجعة الإدارة")
             return
@@ -5672,6 +5544,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         await update.message.reply_text("📸  بعد التحويل قم بأخذ لقطة شاشة لإشعار الإرسال وأرسل لنا إثبات الدفع")
+        return
+
+    elif isinstance(user_states.get(user_id), dict) and user_states[user_id].get("step") in ["send_proof", "send_topup_proof", "send_plan_change_proof"]:
+        await update.message.reply_text("📸 الرجاء إرسال صورة إثبات الدفع حتى نتمكن من مراجعة طلب الإيداع")
         return
 
     elif text == "باقتي":
@@ -6059,6 +5935,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "wallets_match_result": wallets_match
         }
         save_data()
+        user_states.pop(user_id, None)
 
         keyboard = [
             [
@@ -6515,7 +6392,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_states[user_id] = {
             "step": "register_id_back",
             "username": state["username"],
-            "password": state["password"],
             "residence": state["residence"],
             "full_name": state["full_name"],
             "front_id_file_id": front_file_id
@@ -6532,7 +6408,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         pending_verification_requests[user_id] = {
             "username": state["username"],
-            "password": state["password"],
             "residence": state["residence"],
             "full_name": state["full_name"],
             "referral": REFERRAL_DATA.get(user_id, "غير محدد"),
@@ -6566,7 +6441,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"👤 الاسم والكنية: {state['full_name']}\n"
                     f"🏠 مكان الإقامة: {state['residence']}\n"
                     f"🧾 اسم المستخدم: {state['username']}\n"
-                    f"🔑 كلمة المرور: {state['password']}\n"
                     f"📱 يوزر تيليغرام: {f'@{update.message.from_user.username}' if update.message.from_user.username else 'لا يوجد'}\n"
                     f"🆔 Telegram ID: {user_id}\n"
                     f"📌 تم دعوته عن طريق: {REFERRAL_DATA.get(user_id, 'غير محدد')}\n"
@@ -6655,6 +6529,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "proof_file_id": photo_file.file_id
         }
         save_data()
+        user_states.pop(user_id, None)
 
         keyboard = [
              [
@@ -6747,6 +6622,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "proof_file_id": photo_file.file_id
     }    
     save_data()
+    user_states.pop(user_id, None)
 
     keyboard = [
     [
@@ -9459,34 +9335,10 @@ def main():
     # رسائل تحفيزية لغير المشتركين ورسائل تطمينية للمشتركين كل 12 ساعة
     #app.job_queue.run_repeating(send_periodic_motivation_messages, interval=43200, first=600)
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("k", k))
-    app.add_handler(CommandHandler("ana", ana))
-    app.add_handler(CommandHandler("admin", admin_panel))
-    app.add_handler(CommandHandler("send", send_to_all))
-    app.add_handler(CommandHandler("approve", approve))
-    app.add_handler(CommandHandler("userinfo", userinfo))
-
-    app.add_handler(CommandHandler("resetpass", resetpass))
-    app.add_handler(CommandHandler("ban", ban_user))
-    app.add_handler(CommandHandler("unban", unban_user))
-    app.add_handler(CommandHandler("freeze", freeze_user))
-    app.add_handler(CommandHandler("unfreeze", unfreeze_user))
-    app.add_handler(CommandHandler("blocksupport", block_support_user))
-    app.add_handler(CommandHandler("unblocksupport", unblock_support_user))
-    app.add_handler(CommandHandler("addbalance", add_balance))
-    app.add_handler(CommandHandler("subbalance", subtract_balance))
-    app.add_handler(CommandHandler("setplan", set_plan))
-    app.add_handler(CommandHandler("resetwithdraw", reset_withdraw_cycle))
-
-    app.add_handler(CallbackQueryHandler(handle_admin_buttons))
-    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-    app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    register_telegram_handlers(app, sys.modules[__name__])
 
     print("Bot is running...")
     app.run_polling()
 
 
-if __name__ == "__main__":
-    main()
+

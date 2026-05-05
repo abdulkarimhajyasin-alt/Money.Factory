@@ -2,7 +2,7 @@ import json
 import time
 import requests
 import base64
-from web_dashboard.config import BOT_TOKEN
+from web_dashboard.config import ADMIN_ID, BOT_TOKEN
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
@@ -13,9 +13,6 @@ from web_dashboard.auth import get_current_admin
 from web_dashboard.database import get_web_db_connection, release_web_db_connection
 from web_dashboard.services.storage_service import web_db_get as db_get
 from web_dashboard.services.users_service import build_users_list, search_users
-
-ADMIN_IDS = [5685737658]
-ADMIN_ID = ADMIN_IDS[0]
 
 
 router = APIRouter()
@@ -1241,7 +1238,8 @@ def send_telegram_message(chat_id: int, text: str):
             f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
             json={
                 "chat_id": int(chat_id),
-                "text": text
+                "text": text,
+                "parse_mode": "HTML"
             },
             timeout=10
         )
@@ -1391,8 +1389,8 @@ def delete_user(
         "message": f"تم حذف المستخدم {username}"
     }
 
-@router.get("/deleted-accounts")
-def get_deleted_accounts(admin: str = Depends(get_current_admin)):
+@router.get("/deleted-accounts-legacy", include_in_schema=False)
+def get_deleted_accounts_legacy(admin: str = Depends(get_current_admin)):
     users, data = load_storage()
 
     logs = data.get("deleted_accounts_log", [])

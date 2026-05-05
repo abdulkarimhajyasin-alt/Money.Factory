@@ -3,18 +3,17 @@ import time
 import requests
 import base64
 from datetime import datetime
-from web_dashboard.config import BOT_TOKEN
+from web_dashboard.config import ADMIN_ID, BOT_TOKEN
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
 
 from web_dashboard.database import get_web_db_connection, release_web_db_connection
-from web_dashboard.routers.user_auth_router import get_current_user
+from web_dashboard.routers.user_auth_router import get_current_user, hash_password, verify_password
 from web_dashboard.services.storage_service import web_db_get as db_get
 
 
 router = APIRouter()
-ADMIN_ID = 5685737658
 
 PLANS = {
     "الباقة الفضية": {
@@ -454,14 +453,14 @@ def change_password(
 ):
     users, data = load_storage()
 
-    if users.get(username) != request.old_password:
+    stored_password = users.get(username)
+    if not verify_password(stored_password, request.old_password):
         raise HTTPException(status_code=400, detail="Old password is incorrect")
 
     if len(request.new_password.strip()) < 3:
         raise HTTPException(status_code=400, detail="New password is too short")
 
-    old_password = users.get(username)
-    users[username] = request.new_password.strip()
+    users[username] = hash_password(request.new_password.strip())
 
     add_transaction(
         data,
@@ -477,58 +476,6 @@ def change_password(
     return {
         "success": True,
         "message": "Password changed successfully"
-    }
-
-@router.get("/support-messages")
-def get_support_messages(username: str = Depends(get_current_user)):
-    users, data = load_storage()
-
-    support_chat_messages = data.get("support_chat_messages", {})
-    messages = support_chat_messages.get(username, [])
-
-    return {
-        "messages": messages[-50:]
-    }
-
-@router.get("/support-messages")
-def get_support_messages(username: str = Depends(get_current_user)):
-    users, data = load_storage()
-
-    support_chat_messages = data.get("support_chat_messages", {})
-    messages = support_chat_messages.get(username, [])
-
-    unread_count = sum(
-        1 for msg in messages
-        if msg.get("sender") == "support" and not msg.get("read", False)
-    )
-
-    return {
-        "messages": messages[-50:],
-        "unread_count": unread_count
-    }
-
-
-@router.post("/support-mark-read")
-def mark_support_messages_read(
-    request: EmptyRequest,
-    username: str = Depends(get_current_user)
-):
-    users, data = load_storage()
-
-    support_chat_messages = data.get("support_chat_messages", {})
-    messages = support_chat_messages.get(username, [])
-
-    for msg in messages:
-        if msg.get("sender") == "support":
-            msg["read"] = True
-
-    support_chat_messages[username] = messages
-    data["support_chat_messages"] = support_chat_messages
-
-    save_data(data)
-
-    return {
-        "success": True
     }
 
 @router.get("/support-messages")
@@ -1077,7 +1024,7 @@ def delete_my_account(
 ):
     users, data = load_storage()
 
-    if users.get(username) != request.password:
+    if not verify_password(users.get(username), request.password):
         raise HTTPException(status_code=400, detail="Password is incorrect")
 
     if request.confirm_text.strip().upper() != "DELETE":

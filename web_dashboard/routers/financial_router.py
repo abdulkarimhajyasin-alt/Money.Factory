@@ -8,10 +8,9 @@ import requests
 from web_dashboard.auth import get_current_admin
 from web_dashboard.services.storage_service import web_db_get as db_get
 from web_dashboard.database import get_web_db_connection, release_web_db_connection
-from web_dashboard.config import BOT_TOKEN
+from web_dashboard.config import ADMIN_ID, BOT_TOKEN
 
 router = APIRouter()
-ADMIN_ID = 5685737658
 
 
 class UserIdRequest(BaseModel):
@@ -661,8 +660,8 @@ def broadcast(request: MessageRequest, admin: str = Depends(get_current_admin)):
     }
 from fastapi import UploadFile, File, Form
 
-@router.post("/broadcast-media")
-async def broadcast_media(
+@router.post("/broadcast-media-legacy", include_in_schema=False)
+async def broadcast_media_legacy(
     caption: str = Form(""),
     file: UploadFile = File(...),
     admin: str = Depends(get_current_admin)

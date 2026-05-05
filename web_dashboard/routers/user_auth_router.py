@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 import json
 import time
 
+import bcrypt
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import jwt, JWTError
@@ -88,6 +89,28 @@ class UserRegisterRequest(BaseModel):
 
 def now_str():
     return time.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def is_bcrypt_hash(value) -> bool:
+    return isinstance(value, str) and value.startswith(("$2a$", "$2b$", "$2y$"))
+
+
+def verify_password(stored_password, provided_password: str) -> bool:
+    if not isinstance(stored_password, str):
+        return False
+
+    if is_bcrypt_hash(stored_password):
+        return bcrypt.checkpw(provided_password.encode("utf-8"), stored_password.encode("utf-8"))
+
+    return stored_password == provided_password
+
+
+def password_needs_rehash(stored_password) -> bool:
+    return not is_bcrypt_hash(stored_password)
 
 
 def db_set(key, value):
@@ -181,8 +204,13 @@ def user_login(request: UserLoginRequest):
     if username not in users:
         raise HTTPException(status_code=401, detail="Invalid username or password")
 
-    if users.get(username) != password:
+    stored_password = users.get(username)
+    if not verify_password(stored_password, password):
         raise HTTPException(status_code=401, detail="Invalid username or password")
+
+    if password_needs_rehash(stored_password):
+        users[username] = hash_password(password)
+        db_set("users", users)
 
     data = get_all_data()
     user_telegram_ids = data.get("user_telegram_ids", {})
@@ -232,7 +260,7 @@ def user_register(request: UserRegisterRequest):
     if username in users:
         raise HTTPException(status_code=400, detail="Username already exists")
 
-    users[username] = password
+    users[username] = hash_password(password)
 
     user_plans = data.get("user_plans", {})
     user_balance = data.get("user_balance", {})
