@@ -519,8 +519,8 @@ def get_verification_requests(admin: str = Depends(get_current_admin)):
             "time": request.get("time", "غير متوفر"),
             "front_id_file_id": request.get("front_id_file_id"),
             "back_id_file_id": request.get("back_id_file_id"),
-            "front_id_url": build_telegram_file_url(request.get("front_id_file_id")),
-            "back_id_url": build_telegram_file_url(request.get("back_id_file_id")),
+            "front_id_url": build_telegram_file_url(request.get("front_id_file_id")) or request.get("front_image_base64"),
+            "back_id_url": build_telegram_file_url(request.get("back_id_file_id")) or request.get("back_image_base64"),
         })
     return {"count": len(result), "verification_requests": result}
 

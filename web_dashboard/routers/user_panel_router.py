@@ -142,6 +142,45 @@ def send_telegram_photo(chat_id, file_bytes, caption=""):
         return False
 
 
+def send_telegram_photo_with_markup(chat_id, file_bytes, caption="", reply_markup=None):
+    if not BOT_TOKEN or not chat_id:
+        return False
+
+    try:
+        payload = {
+            "chat_id": int(chat_id),
+            "caption": caption or "",
+            "parse_mode": "HTML"
+        }
+
+        if reply_markup:
+            payload["reply_markup"] = json.dumps(reply_markup, ensure_ascii=False)
+
+        response = requests.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto",
+            data=payload,
+            files={"photo": ("identity.jpg", file_bytes)},
+            timeout=30
+        )
+
+        return bool(response.json().get("ok"))
+
+    except Exception as e:
+        print(f"[SEND_TELEGRAM_PHOTO_MARKUP_ERROR] {e}")
+        return False
+
+
+def decode_base64_upload(value):
+    if not value:
+        raise HTTPException(status_code=400, detail="Image is required")
+
+    try:
+        encoded = value.split(",", 1)[1] if "," in value else value
+        return base64.b64decode(encoded)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid image data")
+
+
 def send_telegram_document(chat_id, file_bytes, filename, caption=""):
     if not BOT_TOKEN or not chat_id:
         return False
@@ -1090,11 +1129,16 @@ def create_verification_request(
     if residence not in VERIFICATION_COUNTRIES:
         raise HTTPException(status_code=400, detail="Residence must be selected from the country list")
 
+    front_image_bytes = decode_base64_upload(request.front_image_base64)
+    back_image_bytes = decode_base64_upload(request.back_image_base64)
+    telegram_username = "لا يوجد"
+
     pending[str(user_id)] = {
         "username": username,
         "full_name": request.full_name.strip(),
         "residence": residence,
         "telegram_id": user_id,
+        "telegram_username": telegram_username,
         "time": now_str(),
         "type": "web_account_verification",
         "source": "web_user_dashboard",
@@ -1122,6 +1166,32 @@ def create_verification_request(
     )
 
     save_data(data)
+
+    verification_keyboard = {
+        "inline_keyboard": [
+            [
+                {"text": "✅ موافقة", "callback_data": f"approve_verification_{user_id}"},
+                {"text": "❌ رفض", "callback_data": f"reject_verification_{user_id}"}
+            ]
+        ]
+    }
+
+    caption = (
+        "🪪 طلب توثيق حساب من لوحة الويب\n\n"
+        f"👤 اسم المستخدم: {username}\n"
+        f"👤 الاسم والكنية: {request.full_name.strip()}\n"
+        f"🏠 مكان الإقامة: {residence}\n"
+        f"🆔 Telegram ID: {user_id}\n"
+        f"🕒 الوقت: {pending[str(user_id)]['time']}\n\n"
+        "📷 صورة الوجه الأمامي للهوية"
+    )
+    send_telegram_photo(ADMIN_ID, front_image_bytes, caption)
+    send_telegram_photo_with_markup(
+        ADMIN_ID,
+        back_image_bytes,
+        "📷 صورة الوجه الخلفي للهوية",
+        reply_markup=verification_keyboard
+    )
 
     return {
         "success": True,
