@@ -82,8 +82,7 @@ class UserLoginRequest(BaseModel):
 class UserRegisterRequest(BaseModel):
     username: str
     password: str
-    full_name: str
-    residence: str
+    referral_username: str | None = None
     accepted_terms: bool
 
 
@@ -236,8 +235,7 @@ def user_login(request: UserLoginRequest):
 def user_register(request: UserRegisterRequest):
     username = request.username.strip()
     password = request.password.strip()
-    full_name = request.full_name.strip()
-    residence = request.residence.strip()
+    referral_username = (request.referral_username or "").strip()
 
     if not request.accepted_terms:
         raise HTTPException(status_code=400, detail="You must accept terms")
@@ -248,17 +246,21 @@ def user_register(request: UserRegisterRequest):
     if len(password) < 3:
         raise HTTPException(status_code=400, detail="Password must be at least 3 characters")
 
-    if not full_name:
-        raise HTTPException(status_code=400, detail="Full name is required")
-
-    if not residence:
-        raise HTTPException(status_code=400, detail="Residence is required")
-
     users = db_get("users", {})
     data = get_all_data()
 
     if username in users:
         raise HTTPException(status_code=400, detail="Username already exists")
+
+    for pending_request in data.get("pending_verification_requests", {}).values():
+        if pending_request.get("username") == username:
+            raise HTTPException(status_code=400, detail="Username is reserved in a pending verification request")
+
+    if referral_username:
+        if referral_username not in users:
+            raise HTTPException(status_code=400, detail="Referral username does not exist")
+        if referral_username == username:
+            raise HTTPException(status_code=400, detail="You cannot use your own username as referrer")
 
     users[username] = hash_password(password)
 
@@ -271,17 +273,25 @@ def user_register(request: UserRegisterRequest):
     verified_users = data.get("verified_users", {})
     user_created_time = data.get("user_created_time", {})
     user_referrer = data.get("user_referrer", {})
+    referral_bonus_paid = data.get("referral_bonus_paid", {})
+    user_withdraw_logs = data.get("user_withdraw_logs", {})
+    user_deposit_logs = data.get("user_deposit_logs", {})
+    user_last_profit = data.get("user_last_profit", {})
     transactions = data.get("transactions", {})
 
     user_plans[username] = "NONE"
     user_balance[username] = 0
     user_deposits[username] = 0
     user_statuses[username] = "active"
-    user_full_name[username] = full_name
-    user_residence[username] = residence
+    user_full_name[username] = "غير متوفر"
+    user_residence[username] = "غير متوفر"
     verified_users[username] = False
     user_created_time[username] = time.time()
-    user_referrer[username] = "بدون دعوة"
+    user_referrer[username] = referral_username if referral_username else "بدون دعوة"
+    referral_bonus_paid[username] = False
+    user_withdraw_logs[username] = []
+    user_deposit_logs[username] = []
+    user_last_profit[username] = time.time()
 
     transactions.setdefault(username, []).append({
         "type": "web_account_created",
@@ -299,17 +309,17 @@ def user_register(request: UserRegisterRequest):
     data["verified_users"] = verified_users
     data["user_created_time"] = user_created_time
     data["user_referrer"] = user_referrer
+    data["referral_bonus_paid"] = referral_bonus_paid
+    data["user_withdraw_logs"] = user_withdraw_logs
+    data["user_deposit_logs"] = user_deposit_logs
+    data["user_last_profit"] = user_last_profit
     data["transactions"] = transactions
 
     db_set("users", users)
     db_set("data", data)
 
-    token = create_user_access_token(username)
-
     return {
         "success": True,
-        "message": "Account created successfully",
-        "access_token": token,
-        "token_type": "bearer",
+        "message": "Account created successfully. Link it with Telegram before using the web dashboard.",
         "username": username
     }

@@ -370,6 +370,36 @@
             font-size: 14px;
         }
 
+        .register-steps {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+            margin-bottom: 14px;
+        }
+
+        .register-step {
+            min-height: 8px;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.14);
+        }
+
+        .register-step.active {
+            background: linear-gradient(135deg, #2563eb, #06b6d4);
+        }
+
+        .register-choice-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        @media (max-width: 560px) {
+            .register-choice-row {
+                grid-template-columns: 1fr;
+            }
+        }
+
         .withdraw-progress-box {
     background: rgba(15,23,42,0.88);
     border: 1px solid rgba(255,255,255,0.14);
@@ -737,6 +767,7 @@ let financeChart = null;
 let supportPollingTimer = null;
 let lastSupportMessageCount = 0;
 let supportBoxOpenedOnce = false;
+let registerState = null;
 
 function token() {
     return localStorage.getItem("user_token");
@@ -850,46 +881,183 @@ async function openRegisterModal() {
         const res = await fetch("/user-auth/terms");
         const data = await res.json();
 
-        openModal("إنشاء حساب جديد", `
-            <div class="terms-box">${data.terms || "شروط الاستخدام غير متاحة"}</div>
+        registerState = {
+            step: "terms",
+            terms: data.terms || "شروط الاستخدام غير متاحة",
+            acceptedTerms: false,
+            referralMode: "",
+            referralUsername: "",
+            username: "",
+            password: ""
+        };
 
-            <br>
-
-            <label style="display:flex;gap:8px;align-items:center;cursor:pointer;">
-                <input id="acceptTerms" type="checkbox" style="width:auto;">
-                <span>أوافق على شروط الاستخدام</span>
-            </label>
-
-            <input id="registerUsername" placeholder="اسم المستخدم">
-            <input id="registerPassword" type="password" placeholder="كلمة المرور">
-
-            <button class="primary-btn" onclick="submitRegister()">إنشاء الحساب</button>
-        `);
+        renderRegisterStep();
 
     } catch (e) {
         alert("تعذر تحميل شروط الاستخدام");
     }
 }
 
+function registerStepIndex() {
+    if (!registerState) return 1;
+    if (registerState.step === "terms") return 1;
+    if (registerState.step === "referral") return 2;
+    if (registerState.step === "referral_username") return 2;
+    if (registerState.step === "username") return 3;
+    return 4;
+}
 
-async function submitRegister() {
+function registerProgressHtml() {
+    const active = registerStepIndex();
+    return `
+        <div class="register-steps">
+            ${[1, 2, 3, 4].map(i => `<span class="register-step ${i <= active ? "active" : ""}"></span>`).join("")}
+        </div>
+    `;
+}
+
+function safeAttr(value) {
+    return String(value || "")
+        .replaceAll("&", "&amp;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;");
+}
+
+function renderRegisterStep() {
+    if (!registerState) return;
+
+    let content = registerProgressHtml();
+
+    if (registerState.step === "terms") {
+        content += `
+            <div class="terms-box">${registerState.terms}</div>
+            <label style="display:flex;gap:8px;align-items:center;cursor:pointer;margin-top:12px;">
+                <input id="acceptTerms" type="checkbox" style="width:auto;" ${registerState.acceptedTerms ? "checked" : ""}>
+                <span>أوافق على شروط الاستخدام</span>
+            </label>
+            <button class="primary-btn" onclick="continueFromTerms()">موافق ومتابعة</button>
+        `;
+    } else if (registerState.step === "referral") {
+        content += `
+            <p style="color:#cbd5e1;margin-top:0;">كيف وصلت إلينا؟</p>
+            <div class="register-choice-row">
+                <button class="secondary-btn" onclick="setRegisterReferral('friend')">دعوة من صديق</button>
+                <button class="primary-btn" onclick="setRegisterReferral('none')">بدون دعوة</button>
+            </div>
+            <button class="secondary-btn" onclick="backRegisterStep()">رجوع</button>
+        `;
+    } else if (registerState.step === "referral_username") {
+        content += `
+            <p style="color:#cbd5e1;margin-top:0;">أدخل اسم المستخدم للشخص الذي دعاك.</p>
+            <input id="registerReferralUsername" placeholder="اسم المستخدم الداعي" value="${safeAttr(registerState.referralUsername)}">
+            <button class="primary-btn" onclick="continueFromReferralUsername()">متابعة</button>
+            <button class="secondary-btn" onclick="backRegisterStep()">رجوع</button>
+        `;
+    } else if (registerState.step === "username") {
+        content += `
+            <p style="color:#cbd5e1;margin-top:0;">أدخل اسم المستخدم داخل النظام.</p>
+            <input id="registerUsername" placeholder="اسم المستخدم" value="${safeAttr(registerState.username)}">
+            <button class="primary-btn" onclick="continueFromRegisterUsername()">متابعة</button>
+            <button class="secondary-btn" onclick="backRegisterStep()">رجوع</button>
+        `;
+    } else if (registerState.step === "password") {
+        content += `
+            <p style="color:#cbd5e1;margin-top:0;">أدخل كلمة المرور. يجب أن تكون 3 أحرف أو أكثر.</p>
+            <input id="registerPassword" type="password" placeholder="كلمة المرور" value="${safeAttr(registerState.password)}">
+            <button class="primary-btn" onclick="submitRegister()">إنشاء الحساب</button>
+            <button class="secondary-btn" onclick="backRegisterStep()">رجوع</button>
+        `;
+    }
+
+    openModal("إنشاء حساب جديد", content);
+}
+
+function setRegisterStep(step) {
+    if (!registerState) return;
+    registerState.step = step;
+    renderRegisterStep();
+}
+
+function setRegisterReferral(mode) {
+    if (!registerState) return;
+    registerState.referralMode = mode;
+    registerState.referralUsername = "";
+    registerState.step = mode === "friend" ? "referral_username" : "username";
+    renderRegisterStep();
+}
+
+function backRegisterStep() {
+    if (!registerState) return;
+
+    if (registerState.step === "terms") {
+        closeModal();
+        return;
+    }
+
+    if (registerState.step === "referral") {
+        registerState.step = "terms";
+    } else if (registerState.step === "referral_username") {
+        registerState.step = "referral";
+    } else if (registerState.step === "username") {
+        registerState.step = "referral";
+    } else if (registerState.step === "password") {
+        registerState.step = "username";
+    }
+
+    renderRegisterStep();
+}
+
+function continueFromTerms() {
     const accepted = document.getElementById("acceptTerms").checked;
-
     if (!accepted) {
         showMsg("يجب الموافقة على شروط الاستخدام أولًا", "error");
         return;
     }
+    registerState.acceptedTerms = true;
+    setRegisterStep("referral");
+}
+
+function continueFromReferralUsername() {
+    const referralUsername = document.getElementById("registerReferralUsername").value.trim();
+    if (!referralUsername) {
+        showMsg("أدخل اسم المستخدم الذي دعاك أو اختر بدون دعوة", "error");
+        return;
+    }
+    registerState.referralUsername = referralUsername;
+    setRegisterStep("username");
+}
+
+function continueFromRegisterUsername() {
+    const username = document.getElementById("registerUsername").value.trim();
+    if (username.length < 3) {
+        showMsg("اسم المستخدم يجب أن يكون 3 أحرف أو أكثر", "error");
+        return;
+    }
+    registerState.username = username;
+    setRegisterStep("password");
+}
+
+
+async function submitRegister() {
+    if (!registerState) return;
+
+    const password = document.getElementById("registerPassword").value.trim();
+    if (password.length < 3) {
+        showMsg("كلمة المرور قصيرة جدًا، اجعلها 3 أحرف أو أكثر", "error");
+        return;
+    }
+    registerState.password = password;
 
     try {
         const res = await fetch("/user-auth/register", {
             method: "POST",
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify({
-                username: document.getElementById("registerUsername").value.trim(),
-                password: document.getElementById("registerPassword").value.trim(),
-                full_name: document.getElementById("registerFullName").value.trim(),
-                residence: document.getElementById("registerResidence").value.trim(),
-                accepted_terms: accepted
+                username: registerState.username,
+                password: registerState.password,
+                referral_username: registerState.referralMode === "friend" ? registerState.referralUsername : "",
+                accepted_terms: registerState.acceptedTerms
             })
         });
 
@@ -900,10 +1068,15 @@ async function submitRegister() {
             return;
         }
 
-        localStorage.setItem("user_token", data.access_token);
-
-        closeModal();
-        await loadMe();
+        openModal("تم إنشاء الحساب", `
+            <p class="success" style="line-height:1.8;">تم إنشاء الحساب بنجاح.</p>
+            <p style="color:#cbd5e1;line-height:1.8;">
+                اسم المستخدم: <strong>${safeAttr(data.username || registerState.username)}</strong><br>
+                يمكنك الآن ربط الحساب مع Telegram ثم تسجيل الدخول إلى لوحة المستخدم.
+            </p>
+            <button class="primary-btn" onclick="closeModal()">حسنًا</button>
+        `);
+        registerState = null;
 
     } catch (e) {
         showMsg("خطأ اتصال أثناء إنشاء الحساب", "error");
