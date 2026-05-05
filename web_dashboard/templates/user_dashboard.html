@@ -768,6 +768,39 @@ let lastSupportMessageCount = 0;
 let supportBoxOpenedOnce = false;
 let registerState = null;
 
+const VERIFICATION_COUNTRIES = [
+    "سويسرا",
+    "إيطاليا",
+    "إسبانيا",
+    "اليونان",
+    "بولندا",
+    "التشيك",
+    "رومانيا",
+    "هنغاريا",
+    "فنلندا",
+    "قطر",
+    "النمسا",
+    "ألمانيا",
+    "تركيا",
+    "السعودية",
+    "الإمارات",
+    "العراق",
+    "الأردن",
+    "سوريا",
+    "لبنان",
+    "مصر",
+    "فلسطين",
+    "هولندا",
+    "فرنسا",
+    "بلجيكا",
+    "السويد",
+    "الدنمارك",
+    "النرويج",
+    "بريطانيا",
+    "أمريكا - نيويورك",
+    "كندا - تورونتو"
+];
+
 function token() {
     return localStorage.getItem("user_token");
 }
@@ -1432,9 +1465,18 @@ async function submitCapitalWithdraw() {
 }
 
 function openVerificationModal() {
+    const countryOptions = VERIFICATION_COUNTRIES
+        .slice()
+        .sort((a, b) => a.localeCompare(b, "ar"))
+        .map(country => `<option value="${safeAttr(country)}">${safeAttr(country)}</option>`)
+        .join("");
+
     openModal("توثيق الحساب", `
         <input id="verifyName" placeholder="الاسم والكنية كما في البطاقة">
-        <input id="verifyResidence" placeholder="مكان الإقامة">
+        <select id="verifyResidence">
+            <option value="">اختر دولة الإقامة</option>
+            ${countryOptions}
+        </select>
 
         <label>صورة البطاقة الأمامية</label>
         <input id="frontId" type="file" accept="image/*">

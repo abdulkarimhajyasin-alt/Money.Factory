@@ -52,6 +52,39 @@ PLAN_CODE_MAP = {
     "vip": "باقة VIP"
 }
 
+VERIFICATION_COUNTRIES = {
+    "سويسرا",
+    "إيطاليا",
+    "إسبانيا",
+    "اليونان",
+    "بولندا",
+    "التشيك",
+    "رومانيا",
+    "هنغاريا",
+    "فنلندا",
+    "قطر",
+    "النمسا",
+    "ألمانيا",
+    "تركيا",
+    "السعودية",
+    "الإمارات",
+    "العراق",
+    "الأردن",
+    "سوريا",
+    "لبنان",
+    "مصر",
+    "فلسطين",
+    "هولندا",
+    "فرنسا",
+    "بلجيكا",
+    "السويد",
+    "الدنمارك",
+    "النرويج",
+    "بريطانيا",
+    "أمريكا - نيويورك",
+    "كندا - تورونتو",
+}
+
 
 def now_str():
     return time.strftime("%Y-%m-%d %H:%M:%S")
@@ -985,10 +1018,14 @@ def create_verification_request(
     if str(user_id) in pending:
         raise HTTPException(status_code=400, detail="You already have a pending verification request")
 
+    residence = request.residence.strip()
+    if residence not in VERIFICATION_COUNTRIES:
+        raise HTTPException(status_code=400, detail="Residence must be selected from the country list")
+
     pending[str(user_id)] = {
         "username": username,
         "full_name": request.full_name.strip(),
-        "residence": request.residence.strip(),
+        "residence": residence,
         "telegram_id": user_id,
         "time": now_str(),
         "type": "web_account_verification",
