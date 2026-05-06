@@ -1030,6 +1030,7 @@ let lastSupportMessageCount = 0;
 let supportBoxOpenedOnce = false;
 let supportSelectedObjectUrl = "";
 let supportDragState = null;
+let supportOutsideCloseBound = false;
 let registerState = null;
 let depositState = null;
 
@@ -1951,8 +1952,9 @@ async function markSupportMessagesRead() {
 function showSupportChatBox() {
     const box = document.getElementById("supportChatBox");
     if (box) {
-        centerSupportChatBox();
+        restoreSupportChatPosition();
         box.classList.remove("hidden");
+        bindSupportOutsideClose();
         setTimeout(() => {
             const input = document.getElementById("inlineSupportMessage");
             if (input) input.focus();
@@ -1974,6 +1976,70 @@ function centerSupportChatBox() {
     box.style.right = "auto";
     box.style.bottom = "auto";
     box.style.transform = "translate(-50%, -50%)";
+}
+
+function restoreSupportChatPosition() {
+    const box = document.getElementById("supportChatBox");
+    if (!box) return;
+
+    const saved = localStorage.getItem("support_chat_position");
+
+    if (!saved) {
+        centerSupportChatBox();
+        return;
+    }
+
+    try {
+        const position = JSON.parse(saved);
+        const width = box.offsetWidth || 540;
+        const height = box.offsetHeight || 720;
+        const next = keepSupportChatInViewport(
+            Number(position.left),
+            Number(position.top),
+            width,
+            height
+        );
+
+        box.style.left = `${next.left}px`;
+        box.style.top = `${next.top}px`;
+        box.style.right = "auto";
+        box.style.bottom = "auto";
+        box.style.transform = "none";
+
+    } catch (e) {
+        centerSupportChatBox();
+    }
+}
+
+function saveSupportChatPosition() {
+    const box = document.getElementById("supportChatBox");
+    if (!box) return;
+
+    const rect = box.getBoundingClientRect();
+    localStorage.setItem("support_chat_position", JSON.stringify({
+        left: rect.left,
+        top: rect.top
+    }));
+}
+
+function bindSupportOutsideClose() {
+    if (supportOutsideCloseBound) return;
+    supportOutsideCloseBound = true;
+
+    setTimeout(() => {
+        document.addEventListener("mousedown", closeSupportOnOutsideClick);
+        document.addEventListener("touchstart", closeSupportOnOutsideClick);
+    }, 0);
+}
+
+function closeSupportOnOutsideClick(event) {
+    const box = document.getElementById("supportChatBox");
+
+    if (!box || box.classList.contains("hidden")) return;
+    if (box.contains(event.target)) return;
+    if (event.target.closest(".support-action")) return;
+
+    hideSupportChatBox();
 }
 
 function keepSupportChatInViewport(left, top, width, height) {
@@ -2043,6 +2109,7 @@ function moveSupportDrag(event) {
 }
 
 function stopSupportDrag() {
+    saveSupportChatPosition();
     supportDragState = null;
     document.removeEventListener("mousemove", moveSupportDrag);
     document.removeEventListener("mouseup", stopSupportDrag);
@@ -2139,7 +2206,7 @@ async function loadUserNotifications() {
         }
 
         box.innerHTML = notifications.map(item => `
-            <div class="notification-card ${item.read ? "" : "unread"}">
+            <div class="notification-card ${item.read ? "" : "unread"}" onclick="openSupportFromNotification()" style="cursor:pointer;">
                 <div class="notification-title">${escapeHtml(item.title || "إشعار")}</div>
                 <div class="notification-message">${escapeHtml(item.message || "")}</div>
                 <div class="notification-time">🕒 ${escapeHtml(item.time || "غير متوفر")}</div>
@@ -2149,6 +2216,14 @@ async function loadUserNotifications() {
     } catch (e) {
         box.innerHTML = `<div class="msg error">${escapeHtml(e.message)}</div>`;
     }
+}
+
+async function openSupportFromNotification() {
+    closeModal();
+    showSupportChatBox();
+    supportBoxOpenedOnce = true;
+    await loadSupportMessages(true);
+    await markSupportMessagesRead();
 }
 
 async function markUserNotificationsRead() {
@@ -2275,7 +2350,7 @@ list.innerHTML = html;
 
         list.scrollTop = list.scrollHeight;
 
-        if (forceOpen || hasUnreadSupportMessage) {
+        if (forceOpen) {
             showSupportChatBox();
         }
 
@@ -2488,8 +2563,9 @@ function showBrowserNotification(title, body) {
 function showSupportChatBox() {
     const box = document.getElementById("supportChatBox");
     if (box) {
-        centerSupportChatBox();
+        restoreSupportChatPosition();
         box.classList.remove("hidden");
+        bindSupportOutsideClose();
         setTimeout(() => {
             const input = document.getElementById("inlineSupportMessage");
             if (input) input.focus();
