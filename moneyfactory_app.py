@@ -54,6 +54,7 @@ SUPPORT_EMPLOYEE_IDS = parse_env_int_list("SUPPORT_EMPLOYEE_IDS", "5102448932")
 DATA_FILE = "data.json"
 
 BOT_USERNAME = "Moneyfactory1bot"
+DASHBOARD_BASE_URL = "https://money-factory-dashboard.onrender.com"
 
 
 def hash_password(password):
@@ -369,6 +370,31 @@ def generate_link_token(user_id, username):
     return token
 
 
+def get_or_create_dashboard_token(username):
+    data = db_get("data", {})
+    dashboard_tokens = data.get("telegram_dashboard_tokens", {})
+
+    token = dashboard_tokens.get(username)
+
+    if not token:
+        token = uuid.uuid4().hex + uuid.uuid4().hex
+        dashboard_tokens[username] = token
+        data["telegram_dashboard_tokens"] = dashboard_tokens
+        db_set("data", data)
+
+    return token
+
+
+def delete_dashboard_token(username):
+    data = db_get("data", {})
+    dashboard_tokens = data.get("telegram_dashboard_tokens", {})
+
+    if isinstance(dashboard_tokens, dict):
+        dashboard_tokens.pop(username, None)
+        data["telegram_dashboard_tokens"] = dashboard_tokens
+        db_set("data", data)
+
+
 # =========================
 # دوال الوقت
 # =========================
@@ -679,6 +705,7 @@ def save_data():
         "pending_withdraw_requests": {str(k): v for k, v in pending_withdraw_requests.items()},
         "logged_in_users": {str(k): v for k, v in logged_in_users.items()},
         "user_statuses": user_statuses,
+        "telegram_dashboard_tokens": db_get("data", {}).get("telegram_dashboard_tokens", {}),
     }
 
     db_set("data", data)
@@ -2274,6 +2301,7 @@ def delete_user_completely(user_id, username):
     user_wallet_network.pop(username, None)
     user_identity_photos.pop(username, None)
     user_timezone.pop(username, None)
+    delete_dashboard_token(username)
 
     # إزالة أي مستخدمين كان هذا الشخص داعيًا لهم
     for invited_username, referrer_username in list(user_referrer.items()):
@@ -4143,13 +4171,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             tg_first_name = user.first_name if user.first_name else "مستخدم"
 
-            token = generate_link_token(user_id, username)
+            dashboard_token = get_or_create_dashboard_token(username)
 
-            print("TOKEN GENERATED:", token)  # 🔥 مهم
-
-            link_url = f"https://money-factory-dashboard.onrender.com/users/telegram-login?token={token}"
-
-            await update.message.reply_text(link_url)
+            dashboard_url = f"{DASHBOARD_BASE_URL}/users/dashboard-login?token={dashboard_token}"
 
             await update.message.reply_text(
                  f"👋 أهلاً بك {tg_first_name}{extra_msg}\n\n"
@@ -4161,11 +4185,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                  f"🔗 شاركه مع أصدقائك للاستفادة من نظام الإحالة.\n\n"
                  f"نتمنى لك تجربة موفقة 🚀"
                  ,
-                 reply_markup=main_menu_keyboard()
+                 reply_markup=InlineKeyboardMarkup([[
+                     InlineKeyboardButton("إدارة حسابي من الموقع", url=dashboard_url)
+                 ]])
                       )
-            #await update.message.reply_text(
-                # f"🔗 الان يمكنك الانتقال الى موقنا الالكتروني لمتابعة الاشتراك وادارة حسابك للبدء في صناعة المال \n{link_url}",
-                                           # reply_markup=main_menu_keyboard())
+            await update.message.reply_text(
+                "اختر إحدى الخيارات:",
+                reply_markup=main_menu_keyboard()
+            )
         else:
             user_states.pop(user_id, None)
             await update.message.reply_text("❌ اسم المستخدم أو كلمة المرور غير صحيحة")

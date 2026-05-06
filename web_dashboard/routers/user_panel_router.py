@@ -1385,7 +1385,8 @@ def delete_my_account(
         "user_timezone",
         "pending_profit_capital_activation",
         "web_identity_images",
-        "support_chat_messages"
+        "support_chat_messages",
+        "telegram_dashboard_tokens"
     ]
 
     for key in keys_by_username:

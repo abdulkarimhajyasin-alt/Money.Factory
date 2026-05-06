@@ -148,6 +148,60 @@ async def telegram_login(token: str):
     """)
 
 
+@router.get("/dashboard-login", response_class=HTMLResponse)
+async def dashboard_login(token: str):
+    from web_dashboard.routers.user_auth_router import create_user_access_token
+
+    data = db_get("data", {})
+    dashboard_tokens = data.get("telegram_dashboard_tokens", {})
+
+    if not isinstance(dashboard_tokens, dict):
+        dashboard_tokens = {}
+
+    username = None
+
+    for saved_username, saved_token in dashboard_tokens.items():
+        if saved_token == token:
+            username = saved_username
+            break
+
+    if not username:
+        return HTMLResponse("""
+        <h2>❌ رابط غير صالح</h2>
+        <p>يرجى تسجيل الدخول من البوت من جديد للحصول على رابط إدارة الحساب.</p>
+        """, status_code=400)
+
+    users = db_get("users", {})
+
+    if username not in users:
+        return HTMLResponse("""
+        <h2>❌ الحساب غير موجود</h2>
+        <p>لا يمكن فتح لوحة المستخدم لأن الحساب غير موجود أو تم حذفه.</p>
+        """, status_code=404)
+
+    access_token = create_user_access_token(username)
+
+    return HTMLResponse(f"""
+    <!DOCTYPE html>
+    <html lang="ar" dir="rtl">
+    <head>
+        <meta charset="UTF-8">
+        <title>تسجيل الدخول</title>
+    </head>
+    <body style="font-family: Arial; text-align: center; padding-top: 80px; background:#020617; color:white;">
+        <h2>✅ تم تسجيل الدخول بنجاح</h2>
+        <p>جاري تحويلك إلى لوحة المستخدم...</p>
+
+        <script>
+            localStorage.setItem("user_token", {json.dumps(access_token)});
+            localStorage.setItem("username", {json.dumps(username)});
+            window.location.href = "/user";
+        </script>
+    </body>
+    </html>
+    """)
+
+
 PLANS = {
     "الباقة الفضية": {
         "name": "الفضية",
@@ -1342,7 +1396,8 @@ def delete_user(
         "user_telegram_ids", "user_full_name", "user_residence",
         "user_last_profit", "user_withdraw_logs", "user_deposit_logs",
         "verified_users", "user_referrer", "referral_bonus_paid",
-        "support_waiting_reply", "user_wallet_address", "user_wallet_network"
+        "support_waiting_reply", "user_wallet_address", "user_wallet_network",
+        "telegram_dashboard_tokens"
     ]:
         data.get(key, {}).pop(username, None)
 
