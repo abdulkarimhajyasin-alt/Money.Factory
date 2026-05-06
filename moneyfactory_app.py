@@ -662,6 +662,10 @@ def load_data():
 
 
 def save_data():
+    existing_data = db_get("data", {})
+    if isinstance(existing_data, dict) and existing_data:
+        db_set("data_backup_before_last_save", existing_data)
+
     data = {
         "user_plans": user_plans,
         "user_balance": user_balance,

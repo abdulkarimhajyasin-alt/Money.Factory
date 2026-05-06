@@ -297,6 +297,9 @@ def load_storage():
 
 
 def save_data(data):
+    existing_data = db_get("data", {})
+    if isinstance(existing_data, dict) and existing_data:
+        db_set("data_backup_before_last_save", existing_data)
     db_set("data", data)
 
 
