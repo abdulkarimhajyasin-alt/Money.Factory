@@ -656,6 +656,96 @@ def mark_support_messages_read(username: str = Depends(get_current_user)):
     }
 
 
+@router.get("/notifications")
+def get_user_notifications(username: str = Depends(get_current_user)):
+    users, data = load_storage()
+
+    support_chat_messages = data.get("support_chat_messages", {})
+    messages = support_chat_messages.get(username, [])
+
+    notifications = []
+
+    for index, msg in enumerate(messages):
+        if msg.get("sender") != "support" or msg.get("notification_cleared", False):
+            continue
+
+        if msg.get("type") == "photo":
+            title = "صورة جديدة من الدعم"
+            message = msg.get("message") or msg.get("caption") or "وصلتك صورة من الدعم"
+        elif msg.get("type") == "document":
+            title = "ملف جديد من الدعم"
+            message = msg.get("message") or msg.get("caption") or msg.get("filename") or "وصلك ملف من الدعم"
+        else:
+            title = "رسالة جديدة من الدعم"
+            message = msg.get("message") or msg.get("text") or ""
+
+        notifications.append({
+            "id": index,
+            "title": title,
+            "message": message,
+            "time": msg.get("time", "غير متوفر"),
+            "read": bool(msg.get("read", False)),
+            "type": msg.get("type", "text")
+        })
+
+    unread_count = sum(1 for item in notifications if not item.get("read", False))
+
+    return {
+        "count": len(notifications),
+        "unread_count": unread_count,
+        "notifications": list(reversed(notifications[-100:]))
+    }
+
+
+@router.post("/notifications-read")
+def mark_user_notifications_read(
+    request: EmptyRequest,
+    username: str = Depends(get_current_user)
+):
+    users, data = load_storage()
+
+    support_chat_messages = data.get("support_chat_messages", {})
+    messages = support_chat_messages.get(username, [])
+
+    for msg in messages:
+        if msg.get("sender") == "support" and not msg.get("notification_cleared", False):
+            msg["read"] = True
+
+    support_chat_messages[username] = messages
+    data["support_chat_messages"] = support_chat_messages
+
+    save_data(data)
+
+    return {
+        "success": True
+    }
+
+
+@router.post("/notifications-clear")
+def clear_user_notifications(
+    request: EmptyRequest,
+    username: str = Depends(get_current_user)
+):
+    users, data = load_storage()
+
+    support_chat_messages = data.get("support_chat_messages", {})
+    messages = support_chat_messages.get(username, [])
+
+    for msg in messages:
+        if msg.get("sender") == "support":
+            msg["read"] = True
+            msg["notification_cleared"] = True
+
+    support_chat_messages[username] = messages
+    data["support_chat_messages"] = support_chat_messages
+
+    save_data(data)
+
+    return {
+        "success": True
+    }
+
+
 @router.post("/support")
 def send_support_message(
     request: SupportRequest,

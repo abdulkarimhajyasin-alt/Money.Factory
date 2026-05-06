@@ -761,6 +761,60 @@
     justify-content: center;
 }
 
+.notification-bell-btn {
+    position: relative;
+    width: 46px;
+    height: 46px;
+    min-width: 46px;
+    padding: 0;
+    border-radius: 16px;
+    background: rgba(255,255,255,0.10);
+    border: 1px solid rgba(255,255,255,0.14);
+    color: white;
+    font-size: 18px;
+}
+
+.notification-bell-btn .badge {
+    position: absolute;
+    top: -8px;
+    left: -8px;
+    min-width: 24px;
+    height: 24px;
+    padding: 0 7px;
+    justify-content: center;
+}
+
+.notification-card {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 18px;
+    padding: 14px;
+    margin-bottom: 12px;
+}
+
+.notification-card.unread {
+    border-color: rgba(56,189,248,0.55);
+    background: rgba(37,99,235,0.16);
+}
+
+.notification-title {
+    font-weight: 900;
+    color: #f8fafc;
+}
+
+.notification-message {
+    white-space: pre-wrap;
+    color: #e5e7eb;
+    line-height: 1.8;
+    margin-top: 8px;
+}
+
+.notification-time {
+    color: #94a3b8;
+    font-size: 12px;
+    margin-top: 8px;
+}
+
 .image-preview-overlay {
     position: fixed;
     inset: 0;
@@ -809,6 +863,9 @@
         </div>
 
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+            <button id="userNotificationsBtn" class="notification-bell-btn" onclick="openUserNotificationsModal()" title="الإشعارات">
+                🔔 <span id="userNotificationsCount" class="badge red hidden">0</span>
+            </button>
             <div class="user-chip">
                 👤 <strong id="topUsername">---</strong>
             </div>
@@ -968,6 +1025,7 @@ let countdownTimer = null;
 let financeChart = null;
 
 let supportPollingTimer = null;
+let userNotificationsTimer = null;
 let lastSupportMessageCount = 0;
 let supportBoxOpenedOnce = false;
 let supportSelectedObjectUrl = "";
@@ -1354,9 +1412,8 @@ async function loadMe() {
 
         await loadSupportMessages(false);
         startSupportPolling();
-
-        await loadSupportMessages();
-        startSupportPolling();
+        await updateUserNotificationsCount();
+        startUserNotificationsPolling();
     } catch (e) {
         localStorage.removeItem("user_token");
         document.getElementById("loginView").classList.remove("hidden");
@@ -1884,6 +1941,7 @@ async function markSupportMessagesRead() {
         });
 
         updateSupportBadge(0);
+        await updateUserNotificationsCount();
 
     } catch (e) {
         console.log("تعذر تعليم رسائل الدعم كمقروءة:", e.message);
@@ -2015,6 +2073,113 @@ function updateSupportBadge(count) {
     } else {
         badge.innerText = "0";
         badge.classList.add("hidden");
+    }
+}
+
+async function updateUserNotificationsCount() {
+    try {
+        const data = await api("/user-panel/notifications");
+        const count = Number(data.unread_count || 0);
+        const badge = document.getElementById("userNotificationsCount");
+
+        if (!badge) return;
+
+        if (count > 0) {
+            badge.innerText = count;
+            badge.classList.remove("hidden");
+        } else {
+            badge.innerText = "0";
+            badge.classList.add("hidden");
+        }
+
+    } catch (e) {
+        console.log("user notifications count error:", e.message);
+    }
+}
+
+function startUserNotificationsPolling() {
+    if (userNotificationsTimer) clearInterval(userNotificationsTimer);
+
+    userNotificationsTimer = setInterval(async () => {
+        if (token()) {
+            await updateUserNotificationsCount();
+        }
+    }, 3000);
+}
+
+async function openUserNotificationsModal() {
+    openModal("🔔 إشعارات المستخدم", `
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+            <button class="danger-btn" onclick="clearUserNotifications()">مسح الإشعارات</button>
+        </div>
+
+        <div id="userNotificationsBox">جار تحميل الإشعارات...</div>
+    `);
+
+    await loadUserNotifications();
+    await markUserNotificationsRead();
+}
+
+async function loadUserNotifications() {
+    const box = document.getElementById("userNotificationsBox");
+    if (!box) return;
+
+    try {
+        const data = await api("/user-panel/notifications");
+        const notifications = data.notifications || [];
+
+        if (!notifications.length) {
+            box.innerHTML = `
+                <div class="notification-card">
+                    <div class="notification-title">لا توجد إشعارات</div>
+                    <div class="notification-message">لا يوجد أي إشعار محفوظ حاليًا.</div>
+                </div>
+            `;
+            return;
+        }
+
+        box.innerHTML = notifications.map(item => `
+            <div class="notification-card ${item.read ? "" : "unread"}">
+                <div class="notification-title">${escapeHtml(item.title || "إشعار")}</div>
+                <div class="notification-message">${escapeHtml(item.message || "")}</div>
+                <div class="notification-time">🕒 ${escapeHtml(item.time || "غير متوفر")}</div>
+            </div>
+        `).join("");
+
+    } catch (e) {
+        box.innerHTML = `<div class="msg error">${escapeHtml(e.message)}</div>`;
+    }
+}
+
+async function markUserNotificationsRead() {
+    try {
+        await api("/user-panel/notifications-read", {
+            method: "POST",
+            body: JSON.stringify({})
+        });
+
+        await updateUserNotificationsCount();
+
+    } catch (e) {
+        console.log("mark user notifications read error:", e.message);
+    }
+}
+
+async function clearUserNotifications() {
+    if (!confirm("هل تريد مسح جميع الإشعارات الحالية؟")) return;
+
+    try {
+        await api("/user-panel/notifications-clear", {
+            method: "POST",
+            body: JSON.stringify({})
+        });
+
+        await loadUserNotifications();
+        await updateUserNotificationsCount();
+        await loadSupportMessages(false);
+
+    } catch (e) {
+        showToast(e.message);
     }
 }
 
@@ -2286,6 +2451,7 @@ async function markSupportMessagesRead() {
         });
 
         updateSupportBadge(0);
+        await updateUserNotificationsCount();
 
     } catch (e) {
         console.log("تعذر تعليم الرسائل كمقروءة:", e.message);
