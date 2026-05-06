@@ -590,6 +590,10 @@
         <span>🗑️</span>حذف مستخدم
     </button>
 
+    <button class="action-card" onclick="openAdminSubscriberModal()">
+        <span>➕</span>إضافة مشترك
+    </button>
+
     <button id="supportEmployeesToggleBtn" class="action-card" onclick="toggleSupportEmployees()">
         <span>👨‍💼</span>
         <strong id="supportEmployeesToggleText">موظفو الدعم</strong>
@@ -765,6 +769,39 @@ let currentDetailsUser = null;
 let countdownTimer = null;
 let supportCountTimer = null;
 let liveCountersTimer = null;
+
+const ADMIN_VERIFICATION_COUNTRIES = [
+    "سويسرا",
+    "إيطاليا",
+    "إسبانيا",
+    "اليونان",
+    "بولندا",
+    "التشيك",
+    "رومانيا",
+    "هنغاريا",
+    "فنلندا",
+    "قطر",
+    "النمسا",
+    "ألمانيا",
+    "تركيا",
+    "السعودية",
+    "الإمارات",
+    "العراق",
+    "الأردن",
+    "سوريا",
+    "لبنان",
+    "مصر",
+    "فلسطين",
+    "هولندا",
+    "فرنسا",
+    "بلجيكا",
+    "السويد",
+    "الدنمارك",
+    "النرويج",
+    "بريطانيا",
+    "أمريكا - نيويورك",
+    "كندا - تورونتو"
+];
 
 function token() {
     return localStorage.getItem("token");
@@ -2243,6 +2280,147 @@ function openModal(title, content) {
 
 function closeModal() {
     document.getElementById("modal").classList.add("hidden");
+}
+
+function adminSubscriberDefaultDate() {
+    const now = new Date();
+    return [
+        now.getFullYear(),
+        String(now.getMonth() + 1).padStart(2, "0"),
+        String(now.getDate()).padStart(2, "0")
+    ].join("-");
+}
+
+function adminSubscriberDefaultTime() {
+    const now = new Date();
+    return [
+        String(now.getHours()).padStart(2, "0"),
+        String(now.getMinutes()).padStart(2, "0"),
+        String(now.getSeconds()).padStart(2, "0")
+    ].join(":");
+}
+
+function adminFileToBase64(inputId) {
+    const input = document.getElementById(inputId);
+
+    if (!input || !input.files || !input.files[0]) {
+        return Promise.resolve("");
+    }
+
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(input.files[0]);
+    });
+}
+
+function toggleAdminReferrerField() {
+    const mode = document.getElementById("adminSubscriberReferralMode")?.value;
+    const box = document.getElementById("adminSubscriberReferrerBox");
+    if (box) box.classList.toggle("hidden", mode !== "friend");
+}
+
+function openAdminSubscriberModal() {
+    const countryOptions = ADMIN_VERIFICATION_COUNTRIES
+        .slice()
+        .sort((a, b) => a.localeCompare(b, "ar"))
+        .map(country => `<option value="${safeText(country)}">${safeText(country)}</option>`)
+        .join("");
+
+    openModal("إضافة مشترك", `
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;">
+            <input id="adminSubscriberUsername" placeholder="اسم المستخدم داخل البوت">
+            <input id="adminSubscriberPassword" type="text" placeholder="كلمة السر">
+            <input id="adminSubscriberFullName" placeholder="الاسم في الهوية">
+            <input id="adminSubscriberTelegramId" type="number" placeholder="اي دي تلغرام">
+            <input id="adminSubscriberCapital" type="number" min="0" step="0.01" placeholder="رأس المال">
+            <select id="adminSubscriberVerified">
+                <option value="true">موثق</option>
+                <option value="false">غير موثق</option>
+            </select>
+            <select id="adminSubscriberPlan">
+                <option value="NONE">بدون باقة</option>
+                <option value="الباقة الفضية">الباقة الفضية</option>
+                <option value="الباقة الذهبية">الباقة الذهبية</option>
+                <option value="باقة VIP">باقة VIP</option>
+            </select>
+            <select id="adminSubscriberResidence">
+                <option value="">اختر الدولة / المنطقة</option>
+                ${countryOptions}
+            </select>
+            <select id="adminSubscriberReferralMode" onchange="toggleAdminReferrerField()">
+                <option value="none">بدون دعوة</option>
+                <option value="friend">صديق</option>
+            </select>
+            <div id="adminSubscriberReferrerBox" class="hidden">
+                <input id="adminSubscriberReferrer" placeholder="اسم الصديق الداعي">
+            </div>
+            <input id="adminSubscriberDate" type="date" value="${adminSubscriberDefaultDate()}">
+            <input id="adminSubscriberTime" type="time" step="1" value="${adminSubscriberDefaultTime()}">
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:12px;">
+            <label>صورة الهوية - الوجه الأمامي<input id="adminSubscriberFrontId" type="file" accept="image/*"></label>
+            <label>صورة الهوية - الوجه الخلفي<input id="adminSubscriberBackId" type="file" accept="image/*"></label>
+        </div>
+
+        <p style="color:#cbd5e1;line-height:1.8;">
+            إذا كان المستخدم موجودًا سيتم تحديث بياناته وإضافة القيم الناقصة له. إذا كان مدعوًا من صديق سيظهر ضمن أبنائه في شجرة المستخدمين.
+        </p>
+
+        <button class="btn-green" style="width:100%;margin-top:10px;" onclick="submitAdminSubscriber()">إنشاء</button>
+    `);
+}
+
+async function submitAdminSubscriber() {
+    const msg = document.getElementById("modalMsg");
+    if (msg) msg.innerText = "";
+
+    try {
+        const date = document.getElementById("adminSubscriberDate").value;
+        let timeValue = document.getElementById("adminSubscriberTime").value;
+
+        if (!date || !timeValue) {
+            throw new Error("أدخل تاريخ ووقت إنشاء الحساب");
+        }
+
+        if (timeValue.length === 5) timeValue += ":00";
+
+        const front = await adminFileToBase64("adminSubscriberFrontId");
+        const back = await adminFileToBase64("adminSubscriberBackId");
+
+        const result = await api("/users/admin-subscriber", {
+            method: "POST",
+            body: JSON.stringify({
+                username: document.getElementById("adminSubscriberUsername").value.trim(),
+                password: document.getElementById("adminSubscriberPassword").value.trim(),
+                full_name: document.getElementById("adminSubscriberFullName").value.trim(),
+                front_id_image_base64: front,
+                back_id_image_base64: back,
+                capital: Number(document.getElementById("adminSubscriberCapital").value),
+                telegram_id: document.getElementById("adminSubscriberTelegramId").value ? Number(document.getElementById("adminSubscriberTelegramId").value) : null,
+                verified: document.getElementById("adminSubscriberVerified").value === "true",
+                plan: document.getElementById("adminSubscriberPlan").value,
+                referral_mode: document.getElementById("adminSubscriberReferralMode").value,
+                referrer_username: document.getElementById("adminSubscriberReferrer").value.trim(),
+                residence: document.getElementById("adminSubscriberResidence").value,
+                created_at: `${date}T${timeValue}`
+            })
+        });
+
+        alert(`تم حفظ المشترك بنجاح\nالرصيد الحالي: ${money(result.balance)}\nالأرباح المحتسبة: ${money(result.accrued_profit)}`);
+        closeModal();
+        await refreshAll();
+
+    } catch (e) {
+        if (msg) {
+            msg.className = "msg error";
+            msg.innerText = e.message;
+        } else {
+            alert(e.message);
+        }
+    }
 }
 
 async function openDeletedAccountsModal() {

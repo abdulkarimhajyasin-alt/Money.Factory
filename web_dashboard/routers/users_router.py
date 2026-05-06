@@ -251,6 +251,22 @@ class ChangePlanRequest(BaseModel):
     plan_code: str
 
 
+class AdminSubscriberRequest(BaseModel):
+    username: str
+    password: str
+    full_name: str
+    front_id_image_base64: str | None = None
+    back_id_image_base64: str | None = None
+    capital: float
+    telegram_id: int | None = None
+    verified: bool
+    plan: str
+    referral_mode: str
+    referrer_username: str | None = None
+    residence: str
+    created_at: str
+
+
 def now_str():
     return time.strftime("%Y-%m-%d %H:%M:%S")
 
@@ -324,9 +340,149 @@ def add_transaction(data, username, tx_type, amount, note=""):
     data["transactions"] = transactions
 
 
+def parse_admin_created_at(value: str):
+    try:
+        return datetime.strptime(value.strip(), "%Y-%m-%dT%H:%M:%S").timestamp()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid creation date/time")
+
+
 def get_user_status(data, username):
     user_statuses = data.get("user_statuses", {})
     return user_statuses.get(username, "active")
+
+
+@router.post("/admin-subscriber")
+def admin_create_or_update_subscriber(
+    request: AdminSubscriberRequest,
+    admin: str = Depends(get_current_admin)
+):
+    from web_dashboard.routers.user_auth_router import hash_password
+    from web_dashboard.routers.user_panel_router import VERIFICATION_COUNTRIES
+
+    username = request.username.strip()
+    password = request.password.strip()
+    full_name = request.full_name.strip()
+    residence = request.residence.strip()
+    plan = request.plan.strip()
+    referral_mode = request.referral_mode.strip()
+    referrer_username = (request.referrer_username or "").strip()
+    capital = round(float(request.capital), 2)
+
+    if len(username) < 3:
+        raise HTTPException(status_code=400, detail="Username must be at least 3 characters")
+
+    if len(password) < 3:
+        raise HTTPException(status_code=400, detail="Password must be at least 3 characters")
+
+    if not full_name:
+        raise HTTPException(status_code=400, detail="Full name is required")
+
+    if capital < 0:
+        raise HTTPException(status_code=400, detail="Capital cannot be negative")
+
+    if plan not in [*PLANS.keys(), "NONE"]:
+        raise HTTPException(status_code=400, detail="Invalid plan")
+
+    if residence not in VERIFICATION_COUNTRIES:
+        raise HTTPException(status_code=400, detail="Residence must be selected from the country list")
+
+    created_ts = parse_admin_created_at(request.created_at)
+    now_ts = time.time()
+
+    if created_ts > now_ts:
+        raise HTTPException(status_code=400, detail="Creation date cannot be in the future")
+
+    users, data = load_storage()
+    existed = username in users
+
+    if referral_mode not in ["none", "friend"]:
+        raise HTTPException(status_code=400, detail="Invalid referral mode")
+
+    if referral_mode == "friend":
+        if not referrer_username:
+            raise HTTPException(status_code=400, detail="Referrer username is required")
+        if referrer_username == username:
+            raise HTTPException(status_code=400, detail="User cannot invite himself")
+        if referrer_username not in users:
+            raise HTTPException(status_code=400, detail="Referrer user does not exist")
+
+    users[username] = hash_password(password)
+
+    full_days = int(max(0, now_ts - created_ts) // 86400)
+    accrued_profit = 0.0
+
+    if plan in PLANS and capital > 0:
+        accrued_profit = round(capital * 0.02 * full_days, 2)
+
+    balance = round(capital + accrued_profit, 2)
+    last_profit_ts = created_ts + (full_days * 86400)
+
+    def set_map(key, value):
+        item = data.get(key, {})
+        if not isinstance(item, dict):
+            item = {}
+        item[username] = value
+        data[key] = item
+
+    set_map("user_plans", plan)
+    set_map("user_balance", balance)
+    set_map("user_deposits", capital)
+    set_map("user_last_profit", last_profit_ts)
+    set_map("user_first_deposit_time", created_ts)
+    set_map("user_created_time", created_ts)
+    set_map("user_statuses", data.get("user_statuses", {}).get(username, "active"))
+    set_map("user_full_name", full_name)
+    set_map("user_residence", residence)
+    set_map("verified_users", bool(request.verified))
+
+    if request.telegram_id:
+        set_map("user_telegram_ids", int(request.telegram_id))
+
+    user_referrer = data.get("user_referrer", {})
+    if not isinstance(user_referrer, dict):
+        user_referrer = {}
+
+    if referral_mode == "friend":
+        user_referrer[username] = referrer_username
+    else:
+        user_referrer.pop(username, None)
+
+    data["user_referrer"] = user_referrer
+
+    web_identity_images = data.get("web_identity_images", {})
+    if not isinstance(web_identity_images, dict):
+        web_identity_images = {}
+
+    web_identity_images[username] = {
+        "front_image_base64": request.front_id_image_base64 or "",
+        "back_image_base64": request.back_id_image_base64 or "",
+        "source": "admin_subscriber_form",
+        "time": now_str()
+    }
+    data["web_identity_images"] = web_identity_images
+
+    add_transaction(
+        data,
+        username,
+        "admin_subscriber_restore" if existed else "admin_subscriber_create",
+        capital,
+        f"إضافة/تحديث مشترك من لوحة الأدمن. رأس المال: {capital}$، الأرباح المحتسبة: {accrued_profit}$، تاريخ الإنشاء: {request.created_at}"
+    )
+
+    save_users(users)
+    save_data(data)
+
+    return {
+        "success": True,
+        "created": not existed,
+        "username": username,
+        "capital": capital,
+        "balance": balance,
+        "accrued_profit": accrued_profit,
+        "full_days": full_days,
+        "last_profit_time": last_profit_ts
+    }
 
 
 def set_user_status(data, username, status):
