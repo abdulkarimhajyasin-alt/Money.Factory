@@ -665,6 +665,7 @@ def get_user_notifications(username: str = Depends(get_current_user)):
 
     support_chat_messages = data.get("support_chat_messages", {})
     messages = support_chat_messages.get(username, [])
+    system_notifications = data.get("user_system_notifications", {}).get(username, [])
 
     notifications = []
 
@@ -688,7 +689,24 @@ def get_user_notifications(username: str = Depends(get_current_user)):
             "message": message,
             "time": msg.get("time", "غير متوفر"),
             "read": bool(msg.get("read", False)),
-            "type": msg.get("type", "text")
+            "type": msg.get("type", "text"),
+            "source": "support",
+            "action": "support"
+        })
+
+    for index, item in enumerate(system_notifications):
+        if item.get("notification_cleared", False):
+            continue
+
+        notifications.append({
+            "id": f"system-{index}",
+            "title": item.get("title", "رسالة من النظام"),
+            "message": item.get("message", ""),
+            "time": item.get("time", "غير متوفر"),
+            "read": bool(item.get("read", False)),
+            "type": item.get("type", "system"),
+            "source": "system",
+            "action": "read_only"
         })
 
     unread_count = sum(1 for item in notifications if not item.get("read", False))
@@ -709,13 +727,21 @@ def mark_user_notifications_read(
 
     support_chat_messages = data.get("support_chat_messages", {})
     messages = support_chat_messages.get(username, [])
+    user_system_notifications = data.get("user_system_notifications", {})
+    system_notifications = user_system_notifications.get(username, [])
 
     for msg in messages:
         if msg.get("sender") == "support" and not msg.get("notification_cleared", False):
             msg["read"] = True
 
+    for item in system_notifications:
+        if not item.get("notification_cleared", False):
+            item["read"] = True
+
     support_chat_messages[username] = messages
     data["support_chat_messages"] = support_chat_messages
+    user_system_notifications[username] = system_notifications
+    data["user_system_notifications"] = user_system_notifications
 
     save_data(data)
 
@@ -733,14 +759,22 @@ def clear_user_notifications(
 
     support_chat_messages = data.get("support_chat_messages", {})
     messages = support_chat_messages.get(username, [])
+    user_system_notifications = data.get("user_system_notifications", {})
+    system_notifications = user_system_notifications.get(username, [])
 
     for msg in messages:
         if msg.get("sender") == "support":
             msg["read"] = True
             msg["notification_cleared"] = True
 
+    for item in system_notifications:
+        item["read"] = True
+        item["notification_cleared"] = True
+
     support_chat_messages[username] = messages
     data["support_chat_messages"] = support_chat_messages
+    user_system_notifications[username] = system_notifications
+    data["user_system_notifications"] = user_system_notifications
 
     save_data(data)
 

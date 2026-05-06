@@ -88,6 +88,25 @@ def add_transaction(data, username, tx_type, amount=0, note=""):
     data["transactions"] = transactions
 
 
+def add_user_system_notification(data, username, title, message, notification_type="system"):
+    notifications = data.get("user_system_notifications", {})
+
+    if not isinstance(notifications, dict):
+        notifications = {}
+
+    notifications.setdefault(username, []).append({
+        "title": title,
+        "message": message,
+        "type": notification_type,
+        "time": now_str(),
+        "read": False,
+        "notification_cleared": False
+    })
+
+    notifications[username] = notifications[username][-200:]
+    data["user_system_notifications"] = notifications
+
+
 def send_telegram(chat_id, text):
     if not BOT_TOKEN or not chat_id:
         return False
@@ -628,6 +647,15 @@ def send_private_message(request: PrivateMessageRequest, admin: str = Depends(ge
         f"📨 رسالة من الإدارة:\n\n{msg}"
     )
 
+    if ok:
+        add_user_system_notification(
+            data,
+            username,
+            "رسالة من الإدارة",
+            msg,
+            "private_message"
+        )
+
     add_transaction(
         data,
         username,
@@ -644,17 +672,34 @@ def send_private_message(request: PrivateMessageRequest, admin: str = Depends(ge
 @router.post("/broadcast")
 def broadcast(request: MessageRequest, admin: str = Depends(get_current_admin)):
     chat_ids = db_get("chat_ids", [])
+    data = db_get("data", {})
 
     msg = request.message.replace("\\n", "\n")
 
     success = 0
     failed = 0
 
+    telegram_to_username = {
+        str(tg_id): username
+        for username, tg_id in data.get("user_telegram_ids", {}).items()
+    }
+
     for uid in chat_ids:
         if send_telegram(uid, msg):
             success += 1
+            username = telegram_to_username.get(str(uid))
+            if username:
+                add_user_system_notification(
+                    data,
+                    username,
+                    "رسالة نظام",
+                    msg,
+                    "broadcast"
+                )
         else:
             failed += 1
+
+    save_data(data)
 
     return {
         "success": True,
@@ -700,9 +745,15 @@ async def broadcast_media(
     admin: str = Depends(get_current_admin)
 ):
     chat_ids = db_get("chat_ids", [])
+    data = db_get("data", {})
 
     file_bytes = await file.read()
     caption = caption.replace("\\n", "\n")
+    notification_message = caption or file.filename or "ملف من الإدارة"
+    telegram_to_username = {
+        str(tg_id): username
+        for username, tg_id in data.get("user_telegram_ids", {}).items()
+    }
 
     success = 0
     failed = 0
@@ -710,8 +761,19 @@ async def broadcast_media(
     for uid in chat_ids:
         if send_telegram_media(uid, file_bytes, file.filename, caption):
             success += 1
+            username = telegram_to_username.get(str(uid))
+            if username:
+                add_user_system_notification(
+                    data,
+                    username,
+                    "مرفق من الإدارة",
+                    notification_message,
+                    "broadcast_media"
+                )
         else:
             failed += 1
+
+    save_data(data)
 
     return {
         "success": True,
@@ -743,8 +805,17 @@ def plan_message(request: PlanMessageRequest, admin: str = Depends(get_current_a
             f"📨 رسالة من الإدارة لمشتركي {request.plan}:\n\n{msg}"
         ):
             success += 1
+            add_user_system_notification(
+                data,
+                username,
+                f"رسالة من الإدارة لمشتركي {request.plan}",
+                msg,
+                "plan_message"
+            )
         else:
             failed += 1
+
+    save_data(data)
 
     return {
         "success": True,
@@ -784,8 +855,17 @@ async def plan_message_media(
 
         if send_telegram_media(tg_id, file_bytes, file.filename, final_caption):
             success += 1
+            add_user_system_notification(
+                data,
+                username,
+                f"مرفق من الإدارة لمشتركي {plan}",
+                caption or file.filename or "ملف من الإدارة",
+                "plan_message_media"
+            )
         else:
             failed += 1
+
+    save_data(data)
 
     return {
         "success": True,

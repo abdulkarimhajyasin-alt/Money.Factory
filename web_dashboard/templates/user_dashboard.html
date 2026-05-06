@@ -2206,7 +2206,7 @@ async function loadUserNotifications() {
         }
 
         box.innerHTML = notifications.map(item => `
-            <div class="notification-card ${item.read ? "" : "unread"}" onclick="openSupportFromNotification()" style="cursor:pointer;">
+            <div class="notification-card ${item.read ? "" : "unread"}" ${item.action === "support" ? `onclick="openSupportFromNotification()" style="cursor:pointer;"` : `style="cursor:default;"`}>
                 <div class="notification-title">${escapeHtml(item.title || "إشعار")}</div>
                 <div class="notification-message">${escapeHtml(item.message || "")}</div>
                 <div class="notification-time">🕒 ${escapeHtml(item.time || "غير متوفر")}</div>
