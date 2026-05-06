@@ -858,7 +858,7 @@ async function api(url, options = {}) {
     const headers = options.headers || {};
     headers["Authorization"] = "Bearer " + token();
 
-    if (options.body) {
+    if (options.body && !(options.body instanceof FormData)) {
         headers["Content-Type"] = "application/json";
     }
 
@@ -866,7 +866,15 @@ async function api(url, options = {}) {
     const data = await res.json().catch(() => ({}));
 
     if (!res.ok) {
-        throw new Error(data.detail || JSON.stringify(data));
+        let message = data.detail || data.message || JSON.stringify(data);
+
+        if (Array.isArray(message)) {
+            message = message.map(item => item.msg || JSON.stringify(item)).join("\n");
+        } else if (message && typeof message === "object") {
+            message = JSON.stringify(message);
+        }
+
+        throw new Error(message && message !== "{}" ? message : `Request failed (${res.status})`);
     }
 
     return data;
@@ -2387,26 +2395,38 @@ async function submitAdminSubscriber() {
 
         if (timeValue.length === 5) timeValue += ":00";
 
-        const front = await adminFileToBase64("adminSubscriberFrontId");
-        const back = await adminFileToBase64("adminSubscriberBackId");
+        const capital = document.getElementById("adminSubscriberCapital").value;
+        if (capital === "" || Number(capital) < 0) {
+            throw new Error("أدخل رأس مال صحيح");
+        }
 
-        const result = await api("/users/admin-subscriber", {
+        const formData = new FormData();
+        formData.append("username", document.getElementById("adminSubscriberUsername").value.trim());
+        formData.append("password", document.getElementById("adminSubscriberPassword").value.trim());
+        formData.append("full_name", document.getElementById("adminSubscriberFullName").value.trim());
+        formData.append("capital", capital);
+        formData.append("telegram_id", document.getElementById("adminSubscriberTelegramId").value.trim());
+        formData.append("verified", document.getElementById("adminSubscriberVerified").value);
+        formData.append("plan", document.getElementById("adminSubscriberPlan").value);
+        formData.append("referral_mode", document.getElementById("adminSubscriberReferralMode").value);
+        formData.append("referrer_username", document.getElementById("adminSubscriberReferrer").value.trim());
+        formData.append("residence", document.getElementById("adminSubscriberResidence").value);
+        formData.append("created_at", `${date}T${timeValue}`);
+
+        const frontInput = document.getElementById("adminSubscriberFrontId");
+        const backInput = document.getElementById("adminSubscriberBackId");
+
+        if (frontInput.files && frontInput.files[0]) {
+            formData.append("front_id_image", frontInput.files[0]);
+        }
+
+        if (backInput.files && backInput.files[0]) {
+            formData.append("back_id_image", backInput.files[0]);
+        }
+
+        const result = await api("/users/admin-subscriber-form", {
             method: "POST",
-            body: JSON.stringify({
-                username: document.getElementById("adminSubscriberUsername").value.trim(),
-                password: document.getElementById("adminSubscriberPassword").value.trim(),
-                full_name: document.getElementById("adminSubscriberFullName").value.trim(),
-                front_id_image_base64: front,
-                back_id_image_base64: back,
-                capital: Number(document.getElementById("adminSubscriberCapital").value),
-                telegram_id: document.getElementById("adminSubscriberTelegramId").value ? Number(document.getElementById("adminSubscriberTelegramId").value) : null,
-                verified: document.getElementById("adminSubscriberVerified").value === "true",
-                plan: document.getElementById("adminSubscriberPlan").value,
-                referral_mode: document.getElementById("adminSubscriberReferralMode").value,
-                referrer_username: document.getElementById("adminSubscriberReferrer").value.trim(),
-                residence: document.getElementById("adminSubscriberResidence").value,
-                created_at: `${date}T${timeValue}`
-            })
+            body: formData
         });
 
         alert(`تم حفظ المشترك بنجاح\nالرصيد الحالي: ${money(result.balance)}\nالأرباح المحتسبة: ${money(result.accrued_profit)}`);

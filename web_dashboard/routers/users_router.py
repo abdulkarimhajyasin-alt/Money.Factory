@@ -485,6 +485,55 @@ def admin_create_or_update_subscriber(
     }
 
 
+@router.post("/admin-subscriber-form")
+async def admin_create_or_update_subscriber_form(
+    username: str = Form(...),
+    password: str = Form(...),
+    full_name: str = Form(...),
+    capital: float = Form(...),
+    telegram_id: str = Form(""),
+    verified: str = Form(...),
+    plan: str = Form(...),
+    referral_mode: str = Form(...),
+    referrer_username: str = Form(""),
+    residence: str = Form(...),
+    created_at: str = Form(...),
+    front_id_image: UploadFile | None = File(None),
+    back_id_image: UploadFile | None = File(None),
+    admin: str = Depends(get_current_admin)
+):
+    async def upload_to_data_url(upload: UploadFile | None):
+        if not upload or not upload.filename:
+            return ""
+
+        file_bytes = await upload.read()
+
+        if not file_bytes:
+            return ""
+
+        mime_type = upload.content_type or "application/octet-stream"
+        encoded = base64.b64encode(file_bytes).decode("ascii")
+        return f"data:{mime_type};base64,{encoded}"
+
+    request = AdminSubscriberRequest(
+        username=username,
+        password=password,
+        full_name=full_name,
+        front_id_image_base64=await upload_to_data_url(front_id_image),
+        back_id_image_base64=await upload_to_data_url(back_id_image),
+        capital=capital,
+        telegram_id=int(telegram_id) if str(telegram_id).strip() else None,
+        verified=str(verified).lower() == "true",
+        plan=plan,
+        referral_mode=referral_mode,
+        referrer_username=referrer_username,
+        residence=residence,
+        created_at=created_at
+    )
+
+    return admin_create_or_update_subscriber(request, admin)
+
+
 def set_user_status(data, username, status):
     user_statuses = data.get("user_statuses", {})
     user_statuses[username] = status
