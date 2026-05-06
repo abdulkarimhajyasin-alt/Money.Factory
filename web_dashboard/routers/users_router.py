@@ -319,6 +319,10 @@ def save_data(data):
     db_set("data", data)
 
 
+def save_users(users):
+    db_set("users", users)
+
+
 def ensure_user_exists(username, users):
     if username not in users:
         raise HTTPException(status_code=404, detail="User not found")
