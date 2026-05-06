@@ -519,11 +519,19 @@
 }
 
 .support-chat-box {
-    margin-top: 18px;
-    background: rgba(15,23,42,0.92);
-    border: 1px solid rgba(255,255,255,0.14);
+    position: fixed;
+    right: 24px;
+    bottom: 24px;
+    width: min(540px, calc(100vw - 32px));
+    height: min(720px, calc(100vh - 48px));
+    background: #0b1220;
+    border: 1px solid rgba(148,163,184,0.28);
     border-radius: 24px;
-    padding: 14px;
+    box-shadow: 0 28px 90px rgba(0,0,0,0.58);
+    overflow: hidden;
+    z-index: 9998;
+    display: flex;
+    flex-direction: column;
 }
 
 .support-chat-header {
@@ -531,50 +539,73 @@
     justify-content: space-between;
     align-items: center;
     gap: 12px;
-    margin-bottom: 12px;
+    padding: 16px 18px;
+    background: linear-gradient(135deg, #075e54, #128c7e);
+    border-bottom: 1px solid rgba(255,255,255,0.14);
 }
 
 .support-chat-header small {
     display: block;
-    color: #94a3b8;
+    color: rgba(255,255,255,0.78);
     margin-top: 4px;
     font-size: 12px;
 }
 
 .support-chat-header button {
-    background: #334155;
+    background: rgba(15,23,42,0.32);
+    border: 1px solid rgba(255,255,255,0.22);
     color: white;
-    padding: 8px 12px;
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    border-radius: 50%;
+    min-width: 38px;
 }
 
 .support-messages-list {
-    height: 230px;
+    flex: 1;
     overflow-y: auto;
-    background: rgba(2,6,23,0.55);
-    border: 1px solid rgba(255,255,255,0.10);
-    border-radius: 18px;
-    padding: 12px;
+    background:
+        radial-gradient(circle at 18% 18%, rgba(34,197,94,0.08), transparent 26%),
+        linear-gradient(135deg, rgba(15,23,42,0.94), rgba(2,6,23,0.98));
+    padding: 18px;
 }
 
 .support-message {
-    max-width: 82%;
-    padding: 10px 12px;
-    border-radius: 16px;
-    margin-bottom: 10px;
+    max-width: 78%;
+    padding: 10px 12px 8px;
+    border-radius: 18px;
+    margin-bottom: 12px;
     line-height: 1.7;
     word-break: break-word;
+    box-shadow: 0 10px 26px rgba(0,0,0,0.16);
 }
 
 .support-message.user {
     margin-right: auto;
-    background: linear-gradient(135deg, #2563eb, #06b6d4);
-    color: white;
+    background: #dcf8c6;
+    color: #0f172a;
+    border-bottom-right-radius: 6px;
+}
+
+.support-message.user .support-message-time {
+    color: #64748b;
 }
 
 .support-message.support {
     margin-left: auto;
-    background: rgba(255,255,255,0.12);
-    color: #f8fafc;
+    background: #1f2937;
+    color: white;
+    border-bottom-left-radius: 6px;
+}
+
+.support-message img {
+    max-width: 240px;
+    width: 100%;
+    border-radius: 14px;
+    display: block;
+    margin-bottom: 8px;
+    cursor: pointer;
 }
 
 .support-message-time {
@@ -587,27 +618,117 @@
 .support-empty {
     text-align: center;
     color: #94a3b8;
-    margin-top: 80px;
+    margin-top: 160px;
 }
 
 .support-input-row {
     display: flex;
+    align-items: flex-end;
     gap: 10px;
-    margin-top: 12px;
+    padding: 12px;
+    background: #111827;
+    border-top: 1px solid rgba(255,255,255,0.10);
 }
 
 .support-input-row textarea {
     margin: 0;
     resize: none;
+    min-height: 46px;
+    max-height: 128px;
+    flex: 1;
+    border-radius: 999px;
+    padding: 13px 16px;
+    line-height: 1.45;
+    background: #f8fafc;
+    color: #0f172a;
+    border: 0;
 }
 
-.support-input-row button {
-    background: linear-gradient(135deg, #2563eb, #06b6d4);
+.support-input-row button,
+.support-attach-btn,
+.support-send-btn {
     color: white;
-    min-width: 90px;
+    width: 46px;
+    height: 46px;
+    min-width: 46px;
+    padding: 0;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
-.support-chat-box {
-    width: 100%;
+
+.support-attach-btn {
+    background: #334155;
+    font-size: 20px;
+}
+
+.support-send-btn {
+    background: #22c55e;
+    font-size: 18px;
+}
+
+.support-file-input {
+    display: none;
+}
+
+.support-attachment-preview {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: #111827;
+    border-top: 1px solid rgba(255,255,255,0.10);
+}
+
+.support-attachment-preview img {
+    width: 72px;
+    height: 72px;
+    object-fit: cover;
+    border-radius: 14px;
+    border: 1px solid rgba(255,255,255,0.18);
+}
+
+.support-attachment-preview .support-file-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    color: #e5e7eb;
+}
+
+.support-attachment-preview .support-file-name {
+    max-width: 280px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #e5e7eb;
+    font-size: 13px;
+}
+
+.support-attachment-preview button {
+    margin-right: auto;
+    width: 34px;
+    height: 34px;
+    min-width: 34px;
+    padding: 0;
+    border-radius: 50%;
+    background: #ef4444;
+    color: white;
+}
+
+@media (max-width: 640px) {
+    .support-chat-box {
+        right: 10px;
+        bottom: 10px;
+        width: calc(100vw - 20px);
+        height: calc(100vh - 20px);
+        border-radius: 20px;
+    }
+
+    .support-message {
+        max-width: 88%;
+    }
 }
 
 .support-action {
@@ -801,12 +922,13 @@
         <div class="support-empty">لا توجد رسائل حتى الآن</div>
     </div>
 
+    <div id="supportAttachmentPreview" class="support-attachment-preview hidden"></div>
+
     <div class="support-input-row">
-        <textarea id="inlineSupportMessage" rows="2" placeholder="اكتب رسالتك هنا..."></textarea>
-        <button onclick="submitInlineSupport()">إرسال</button>
-        <input id="userSupportMediaFile" type="file">
-        <input id="userSupportMediaCaption" placeholder="نص مرفق مع الصورة/الملف - اختياري">
-        <button onclick="submitUserSupportMedia()">إرسال صورة/ملف</button>
+        <button type="button" class="support-attach-btn" onclick="openSupportFilePicker()" title="إرفاق صورة أو ملف">📎</button>
+        <input id="userSupportMediaFile" class="support-file-input" type="file" onchange="previewUserSupportMedia()">
+        <textarea id="inlineSupportMessage" rows="1" placeholder="اكتب رسالة..."></textarea>
+        <button type="button" class="support-send-btn" onclick="sendSupportComposer()" title="إرسال">➤</button>
     </div>
 
 </div>
@@ -838,6 +960,7 @@ let financeChart = null;
 let supportPollingTimer = null;
 let lastSupportMessageCount = 0;
 let supportBoxOpenedOnce = false;
+let supportSelectedObjectUrl = "";
 let registerState = null;
 let depositState = null;
 
@@ -1758,7 +1881,13 @@ async function markSupportMessagesRead() {
 
 function showSupportChatBox() {
     const box = document.getElementById("supportChatBox");
-    if (box) box.classList.remove("hidden");
+    if (box) {
+        box.classList.remove("hidden");
+        setTimeout(() => {
+            const input = document.getElementById("inlineSupportMessage");
+            if (input) input.focus();
+        }, 80);
+    }
 }
 
 function hideSupportChatBox() {
@@ -1919,9 +2048,82 @@ function showBrowserNotification(title, body) {
     }
 }
 
+function openSupportFilePicker() {
+    const fileInput = document.getElementById("userSupportMediaFile");
+    if (fileInput) fileInput.click();
+}
+
+function previewUserSupportMedia() {
+    const fileInput = document.getElementById("userSupportMediaFile");
+    const preview = document.getElementById("supportAttachmentPreview");
+
+    if (!fileInput || !preview) return;
+
+    if (supportSelectedObjectUrl) {
+        URL.revokeObjectURL(supportSelectedObjectUrl);
+        supportSelectedObjectUrl = "";
+    }
+
+    const file = fileInput.files && fileInput.files[0];
+
+    if (!file) {
+        preview.classList.add("hidden");
+        preview.innerHTML = "";
+        return;
+    }
+
+    const safeName = escapeHtml(file.name || "ملف مرفق");
+    const isImage = file.type && file.type.startsWith("image/");
+    const previewMedia = isImage
+        ? (() => {
+            supportSelectedObjectUrl = URL.createObjectURL(file);
+            return `<img src="${supportSelectedObjectUrl}" alt="preview">`;
+        })()
+        : `<div style="width:54px;height:54px;border-radius:14px;background:#334155;display:flex;align-items:center;justify-content:center;font-size:24px;">📄</div>`;
+
+    preview.innerHTML = `
+        <div class="support-file-card">
+            ${previewMedia}
+            <div>
+                <div class="support-file-name">${safeName}</div>
+                <small style="color:#94a3b8;">جاهز للإرسال</small>
+            </div>
+        </div>
+        <button type="button" onclick="clearSupportAttachment()" title="إزالة">×</button>
+    `;
+    preview.classList.remove("hidden");
+}
+
+function clearSupportAttachment() {
+    const fileInput = document.getElementById("userSupportMediaFile");
+    const preview = document.getElementById("supportAttachmentPreview");
+
+    if (supportSelectedObjectUrl) {
+        URL.revokeObjectURL(supportSelectedObjectUrl);
+        supportSelectedObjectUrl = "";
+    }
+
+    if (fileInput) fileInput.value = "";
+    if (preview) {
+        preview.innerHTML = "";
+        preview.classList.add("hidden");
+    }
+}
+
+async function sendSupportComposer() {
+    const fileInput = document.getElementById("userSupportMediaFile");
+
+    if (fileInput && fileInput.files && fileInput.files.length) {
+        await submitUserSupportMedia();
+        return;
+    }
+
+    await submitInlineSupport();
+}
+
 async function submitInlineSupport() {
     const input = document.getElementById("inlineSupportMessage");
-    const message = input.value.trim();
+    const message = input ? input.value.trim() : "";
 
     if (!message) return;
 
@@ -1935,16 +2137,16 @@ async function submitInlineSupport() {
         await loadSupportMessages(true);
 
     } catch (e) {
-        alert(e.message || "لا يمكنك إرسال رسالة جديدة قبل رد الدعم");
+        showToast(e.message || "لا يمكنك إرسال رسالة جديدة قبل رد الدعم");
     }
 }
 
 async function submitUserSupportMedia() {
     const fileInput = document.getElementById("userSupportMediaFile");
-    const captionInput = document.getElementById("userSupportMediaCaption");
+    const captionInput = document.getElementById("inlineSupportMessage");
 
     if (!fileInput || !fileInput.files.length) {
-        alert("اختر صورة أو ملف أولاً");
+        showToast("اختر صورة أو ملف أولاً");
         return;
     }
 
@@ -1967,15 +2169,15 @@ async function submitUserSupportMedia() {
             throw new Error(result.detail || "فشل إرسال الملف");
         }
 
-        fileInput.value = "";
+        clearSupportAttachment();
         if (captionInput) captionInput.value = "";
 
-        await loadSupportMessages();
+        await loadSupportMessages(true);
 
-        alert("✅ تم إرسال الصورة/الملف إلى الدعم");
+        showToast("تم إرسال المرفق إلى الدعم");
 
     } catch (e) {
-        alert(e.message);
+        showToast(e.message);
     }
 }
 
@@ -2022,7 +2224,13 @@ function showBrowserNotification(title, body) {
 
 function showSupportChatBox() {
     const box = document.getElementById("supportChatBox");
-    if (box) box.classList.remove("hidden");
+    if (box) {
+        box.classList.remove("hidden");
+        setTimeout(() => {
+            const input = document.getElementById("inlineSupportMessage");
+            if (input) input.focus();
+        }, 80);
+    }
 }
 
 function hideSupportChatBox() {
@@ -2041,7 +2249,7 @@ function escapeHtml(value) {
 
 async function submitInlineSupport() {
     const input = document.getElementById("inlineSupportMessage");
-    const message = input.value.trim();
+    const message = input ? input.value.trim() : "";
 
     if (!message) return;
 
@@ -2052,10 +2260,10 @@ async function submitInlineSupport() {
         });
 
         input.value = "";
-        await loadSupportMessages();
+        await loadSupportMessages(true);
 
     } catch (e) {
-        alert(e.message);
+        showToast(e.message || "لا يمكنك إرسال رسالة جديدة قبل رد الدعم");
     }
 }
 
