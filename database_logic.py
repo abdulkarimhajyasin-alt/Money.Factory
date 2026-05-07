@@ -99,7 +99,7 @@ def db_get(key, default_value):
 
     except Exception as e:
         print(f"خطأ في db_get للعنصر {key}: {e}")
-        return default_value
+        raise
 
     finally:
         if cur:

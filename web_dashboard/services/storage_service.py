@@ -21,7 +21,7 @@ def web_db_get(key, default_value=None):
 
     except Exception as e:
         print(f"[WEB_DB_GET_ERROR] key={key} error={e}")
-        return default_value
+        raise
 
     finally:
         if cur:

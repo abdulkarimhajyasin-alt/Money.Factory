@@ -285,6 +285,25 @@ def db_set(key, value):
 
 
 def save_data(data):
+    critical_keys = [
+        "user_plans",
+        "user_balance",
+        "user_deposits",
+        "user_telegram_ids",
+        "verified_users",
+    ]
+
+    critical_items_count = sum(
+        len(data.get(key, {}))
+        for key in critical_keys
+        if isinstance(data.get(key, {}), dict)
+    )
+
+    if critical_items_count == 0:
+        users = db_get("users", {})
+        if isinstance(users, dict) and users:
+            raise HTTPException(status_code=500, detail="Refusing to save empty critical data while users exist")
+
     if ENABLE_FULL_DATA_BACKUP:
         existing_data = db_get("data", {})
         if isinstance(existing_data, dict) and existing_data:

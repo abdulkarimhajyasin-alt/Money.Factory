@@ -714,6 +714,7 @@ def save_data():
         "telegram_dashboard_tokens": db_get("data", {}).get("telegram_dashboard_tokens", {}),
     }
 
+    assert_data_save_is_safe(data)
     db_set("data", data)
 
 def reload_storage_from_db():
@@ -727,6 +728,26 @@ def reload_storage_from_db():
         load_data()
     except Exception as e:
         print(f"[RELOAD_STORAGE_ERROR] {e}")    
+
+
+def assert_data_save_is_safe(data):
+    critical_keys = [
+        "user_plans",
+        "user_balance",
+        "user_deposits",
+        "user_telegram_ids",
+        "verified_users",
+    ]
+
+    critical_items_count = sum(
+        len(data.get(key, {}))
+        for key in critical_keys
+        if isinstance(data.get(key, {}), dict)
+    )
+
+    if users and critical_items_count == 0:
+        raise RuntimeError("Refusing to save empty critical data while users exist")
+
 
 def is_support_blocked(username):
     return support_system.is_support_blocked(support_blocked_users, username)
