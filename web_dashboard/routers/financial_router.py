@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 import json
+import os
 import time
 import requests
 
@@ -11,6 +12,7 @@ from web_dashboard.database import get_web_db_connection, release_web_db_connect
 from web_dashboard.config import ADMIN_ID, BOT_TOKEN
 
 router = APIRouter()
+ENABLE_FULL_DATA_BACKUP = os.getenv("ENABLE_FULL_DATA_BACKUP", "false").lower() in ("1", "true", "yes", "on")
 
 
 class UserIdRequest(BaseModel):
@@ -67,9 +69,10 @@ def db_set(key, value):
 
 
 def save_data(data):
-    existing_data = db_get("data", {})
-    if isinstance(existing_data, dict) and existing_data:
-        db_set("data_backup_before_last_save", existing_data)
+    if ENABLE_FULL_DATA_BACKUP:
+        existing_data = db_get("data", {})
+        if isinstance(existing_data, dict) and existing_data:
+            db_set("data_backup_before_last_save", existing_data)
     db_set("data", data)
 
 

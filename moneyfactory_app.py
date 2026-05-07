@@ -35,6 +35,7 @@ load_dotenv()
 # =========================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
+ENABLE_FULL_DATA_BACKUP = os.getenv("ENABLE_FULL_DATA_BACKUP", "false").lower() in ("1", "true", "yes", "on")
 
 def parse_env_int_list(name, default):
     raw_value = os.getenv(name, default)
@@ -662,9 +663,10 @@ def load_data():
 
 
 def save_data():
-    existing_data = db_get("data", {})
-    if isinstance(existing_data, dict) and existing_data:
-        db_set("data_backup_before_last_save", existing_data)
+    if ENABLE_FULL_DATA_BACKUP:
+        existing_data = db_get("data", {})
+        if isinstance(existing_data, dict) and existing_data:
+            db_set("data_backup_before_last_save", existing_data)
 
     data = {
         "user_plans": user_plans,

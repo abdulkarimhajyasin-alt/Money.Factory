@@ -1,4 +1,5 @@
 import json
+import os
 import time
 import requests
 import base64
@@ -14,6 +15,7 @@ from web_dashboard.services.storage_service import web_db_get as db_get
 
 
 router = APIRouter()
+ENABLE_FULL_DATA_BACKUP = os.getenv("ENABLE_FULL_DATA_BACKUP", "false").lower() in ("1", "true", "yes", "on")
 
 PLANS = {
     "الباقة الفضية": {
@@ -283,9 +285,10 @@ def db_set(key, value):
 
 
 def save_data(data):
-    existing_data = db_get("data", {})
-    if isinstance(existing_data, dict) and existing_data:
-        db_set("data_backup_before_last_save", existing_data)
+    if ENABLE_FULL_DATA_BACKUP:
+        existing_data = db_get("data", {})
+        if isinstance(existing_data, dict) and existing_data:
+            db_set("data_backup_before_last_save", existing_data)
     db_set("data", data)
 
 

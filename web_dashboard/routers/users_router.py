@@ -1,4 +1,5 @@
 import json
+import os
 import time
 import requests
 import base64
@@ -16,6 +17,7 @@ from web_dashboard.services.users_service import build_users_list, search_users
 
 
 router = APIRouter()
+ENABLE_FULL_DATA_BACKUP = os.getenv("ENABLE_FULL_DATA_BACKUP", "false").lower() in ("1", "true", "yes", "on")
 
 @router.get("/link-telegram", response_class=HTMLResponse)
 async def link_telegram(token: str):
@@ -313,9 +315,10 @@ def load_storage():
 
 
 def save_data(data):
-    existing_data = db_get("data", {})
-    if isinstance(existing_data, dict) and existing_data:
-        db_set("data_backup_before_last_save", existing_data)
+    if ENABLE_FULL_DATA_BACKUP:
+        existing_data = db_get("data", {})
+        if isinstance(existing_data, dict) and existing_data:
+            db_set("data_backup_before_last_save", existing_data)
     db_set("data", data)
 
 
