@@ -413,38 +413,66 @@
 
 .admin-chat-box {
     margin-top: 18px;
-    background: rgba(15,23,42,0.88);
+    background: rgba(15,23,42,0.96);
     border: 1px solid rgba(255,255,255,0.14);
     border-radius: 24px;
-    padding: 16px;
+    padding: 0;
+    overflow: hidden;
+    box-shadow: 0 24px 70px rgba(0,0,0,0.35);
+}
+
+.admin-chat-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 18px;
+    background: linear-gradient(135deg, rgba(37,99,235,0.98), rgba(6,182,212,0.94));
+    border-bottom: 1px solid rgba(255,255,255,0.14);
+}
+
+.admin-chat-header h3 {
+    margin: 0;
+}
+
+.admin-chat-header small {
+    display: block;
+    color: rgba(255,255,255,0.78);
+    margin-top: 4px;
+    font-size: 12px;
 }
 
 .admin-chat-list {
-    height: 280px;
+    height: min(520px, 54vh);
     overflow-y: auto;
-    background: rgba(2,6,23,0.55);
-    border: 1px solid rgba(255,255,255,0.10);
-    border-radius: 18px;
-    padding: 12px;
+    background:
+        radial-gradient(circle at 18% 18%, rgba(37,99,235,0.14), transparent 28%),
+        radial-gradient(circle at 82% 8%, rgba(6,182,212,0.10), transparent 26%),
+        linear-gradient(135deg, rgba(15,23,42,0.96), rgba(2,6,23,0.98));
+    padding: 18px;
 }
 
 .admin-chat-message {
-    max-width: 82%;
-    padding: 10px 12px;
-    border-radius: 16px;
-    margin-bottom: 10px;
+    max-width: 78%;
+    padding: 10px 12px 8px;
+    border-radius: 18px;
+    margin-bottom: 12px;
     line-height: 1.7;
     word-break: break-word;
+    box-shadow: 0 10px 26px rgba(0,0,0,0.16);
 }
 
 .admin-chat-message.user {
     margin-left: auto;
-    background: rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.10);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-bottom-left-radius: 6px;
 }
 
 .admin-chat-message.support {
     margin-right: auto;
     background: linear-gradient(135deg, #2563eb, #06b6d4);
+    border-bottom-right-radius: 6px;
 }
 
 .admin-chat-time {
@@ -456,19 +484,104 @@
 
 .admin-chat-input {
     display: flex;
+    align-items: flex-end;
     gap: 10px;
-    margin-top: 12px;
+    padding: 12px;
+    background: rgba(15,23,42,0.98);
+    border-top: 1px solid rgba(255,255,255,0.10);
 }
 
 .admin-chat-input textarea {
     margin: 0;
     resize: none;
+    min-height: 46px;
+    max-height: 128px;
+    flex: 1;
+    border-radius: 999px;
+    padding: 13px 16px;
+    line-height: 1.45;
+    background: rgba(255,255,255,0.09);
+    color: #f8fafc;
+    border: 1px solid rgba(255,255,255,0.12);
 }
 
-.admin-chat-input button {
-    background: #16a34a;
+.admin-support-attach-btn,
+.admin-support-send-btn {
     color: white;
-    min-width: 100px;
+    width: 46px;
+    height: 46px;
+    min-width: 46px;
+    padding: 0;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.admin-support-attach-btn {
+    background: rgba(255,255,255,0.10);
+    border: 1px solid rgba(255,255,255,0.14);
+    font-size: 20px;
+}
+
+.admin-support-send-btn {
+    background: linear-gradient(135deg, #2563eb, #06b6d4);
+    font-size: 18px;
+}
+
+.admin-support-file-input {
+    display: none;
+}
+
+.admin-support-attachment-preview {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: rgba(15,23,42,0.98);
+    border-top: 1px solid rgba(255,255,255,0.10);
+}
+
+.admin-support-attachment-preview img {
+    width: 72px;
+    height: 72px;
+    object-fit: cover;
+    border-radius: 14px;
+    border: 1px solid rgba(255,255,255,0.18);
+}
+
+.admin-support-file-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    color: #e5e7eb;
+}
+
+.admin-support-file-name {
+    max-width: 280px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #e5e7eb;
+    font-size: 13px;
+}
+
+.admin-support-attachment-preview button {
+    margin-right: auto;
+    width: 34px;
+    height: 34px;
+    min-width: 34px;
+    padding: 0;
+    border-radius: 50%;
+    background: #ef4444;
+    color: white;
+}
+
+.admin-support-delete-btn {
+    width: calc(100% - 24px);
+    margin: 0 12px 12px;
+    border-radius: 16px;
 }
 
 .image-preview-overlay {
@@ -768,6 +881,7 @@ let plansChart = null;
 let currentDetailsUser = null;
 let countdownTimer = null;
 let supportCountTimer = null;
+let adminSupportSelectedObjectUrl = "";
 let liveCountersTimer = null;
 
 const ADMIN_VERIFICATION_COUNTRIES = [
@@ -1921,22 +2035,24 @@ async function renderAdminSupportChat(username) {
     if (!chatPanel) {
         box.insertAdjacentHTML("beforeend", `
             <div id="adminSupportChatPanel" class="admin-chat-box">
-                <h3>📩 صندوق مراسلة الدعم</h3>
+                <div class="admin-chat-header">
+                    <div>
+                        <h3>صندوق مراسلة الدعم</h3>
+                        <small>محادثة الإدارة مع المستخدم</small>
+                    </div>
+                </div>
                 <div id="adminSupportChatList" class="admin-chat-list"></div>
 
+                <div id="adminSupportAttachmentPreview" class="admin-support-attachment-preview hidden"></div>
+
                 <div class="admin-chat-input">
+                   <button type="button" class="admin-support-attach-btn" onclick="openAdminSupportFilePicker()" title="إرفاق صورة أو ملف">📎</button>
+                   <input id="adminSupportMediaFile" class="admin-support-file-input" type="file" onchange="previewAdminSupportMedia()">
                    <textarea id="adminSupportReplyText" rows="2" placeholder="اكتب ردك للمستخدم..."></textarea>
-                   <button onclick="sendAdminSupportReply('${jsSafe(username)}')">إرسال نص</button>
+                   <button type="button" class="admin-support-send-btn" onclick="sendAdminSupportComposer('${jsSafe(username)}')" title="إرسال">➤</button>
                 </div>
 
-                <div style="margin-top:10px;">
-                   <input id="adminSupportMediaFile" type="file">
-                   <input id="adminSupportMediaCaption" placeholder="نص مرفق مع الصورة/الملف - اختياري">
-                   <button class="btn-blue" style="width:100%;margin-top:8px;" onclick="sendAdminSupportMedia('${jsSafe(username)}')">
-                       🖼️ إرسال صورة/ملف
-                </button>
-</div>    
-                    <button class="btn-red" style="width:100%;margin-top:10px;" onclick="deleteAdminSupportChat('${jsSafe(username)}')">
+                    <button class="btn-red admin-support-delete-btn" onclick="deleteAdminSupportChat('${jsSafe(username)}')">
                         🗑️ مسح المحادثة لدى الطرفين
                     </button>
                 
@@ -2060,9 +2176,82 @@ async function sendAdminSupportReply(username) {
     }
 }
 
+function openAdminSupportFilePicker() {
+    const fileInput = document.getElementById("adminSupportMediaFile");
+    if (fileInput) fileInput.click();
+}
+
+function previewAdminSupportMedia() {
+    const fileInput = document.getElementById("adminSupportMediaFile");
+    const preview = document.getElementById("adminSupportAttachmentPreview");
+
+    if (!fileInput || !preview) return;
+
+    if (adminSupportSelectedObjectUrl) {
+        URL.revokeObjectURL(adminSupportSelectedObjectUrl);
+        adminSupportSelectedObjectUrl = "";
+    }
+
+    const file = fileInput.files && fileInput.files[0];
+
+    if (!file) {
+        preview.classList.add("hidden");
+        preview.innerHTML = "";
+        return;
+    }
+
+    const safeName = safeText(file.name || "ملف مرفق");
+    const isImage = file.type && file.type.startsWith("image/");
+    const previewMedia = isImage
+        ? (() => {
+            adminSupportSelectedObjectUrl = URL.createObjectURL(file);
+            return `<img src="${adminSupportSelectedObjectUrl}" alt="preview">`;
+        })()
+        : `<div style="width:54px;height:54px;border-radius:14px;background:linear-gradient(135deg,#2563eb,#06b6d4);display:flex;align-items:center;justify-content:center;font-size:24px;">📄</div>`;
+
+    preview.innerHTML = `
+        <div class="admin-support-file-card">
+            ${previewMedia}
+            <div>
+                <div class="admin-support-file-name">${safeName}</div>
+                <small style="color:#94a3b8;">جاهز للإرسال</small>
+            </div>
+        </div>
+        <button type="button" onclick="clearAdminSupportAttachment()" title="إزالة">×</button>
+    `;
+    preview.classList.remove("hidden");
+}
+
+function clearAdminSupportAttachment() {
+    const fileInput = document.getElementById("adminSupportMediaFile");
+    const preview = document.getElementById("adminSupportAttachmentPreview");
+
+    if (adminSupportSelectedObjectUrl) {
+        URL.revokeObjectURL(adminSupportSelectedObjectUrl);
+        adminSupportSelectedObjectUrl = "";
+    }
+
+    if (fileInput) fileInput.value = "";
+    if (preview) {
+        preview.innerHTML = "";
+        preview.classList.add("hidden");
+    }
+}
+
+async function sendAdminSupportComposer(username) {
+    const fileInput = document.getElementById("adminSupportMediaFile");
+
+    if (fileInput && fileInput.files && fileInput.files.length) {
+        await sendAdminSupportMedia(username);
+        return;
+    }
+
+    await sendAdminSupportReply(username);
+}
+
 async function sendAdminSupportMedia(username) {
     const fileInput = document.getElementById("adminSupportMediaFile");
-    const captionInput = document.getElementById("adminSupportMediaCaption");
+    const captionInput = document.getElementById("adminSupportReplyText");
 
     if (!fileInput || !fileInput.files.length) {
         alert("اختر صورة أو ملف أولاً");
@@ -2089,7 +2278,7 @@ async function sendAdminSupportMedia(username) {
             throw new Error(result.detail || "فشل إرسال الملف");
         }
 
-        fileInput.value = "";
+        clearAdminSupportAttachment();
         if (captionInput) captionInput.value = "";
 
         await loadAdminSupportChat(username);

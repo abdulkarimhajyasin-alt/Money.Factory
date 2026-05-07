@@ -545,7 +545,7 @@
     padding: 16px 18px;
     background: linear-gradient(135deg, rgba(37,99,235,0.98), rgba(6,182,212,0.94));
     border-bottom: 1px solid rgba(255,255,255,0.14);
-    cursor: move;
+    cursor: default;
     user-select: none;
 }
 
@@ -976,7 +976,7 @@
     </div>
     <div id="supportChatBox" class="support-chat-box hidden">
 
-    <div class="support-chat-header" onmousedown="startSupportDrag(event)" ontouchstart="startSupportDrag(event)">
+    <div class="support-chat-header">
         <div>
             <strong>📩 رسائل الدعم</strong>
             <small>المحادثة بينك وبين الدعم</small>
@@ -1952,7 +1952,7 @@ async function markSupportMessagesRead() {
 function showSupportChatBox() {
     const box = document.getElementById("supportChatBox");
     if (box) {
-        restoreSupportChatPosition();
+        centerSupportChatBox();
         box.classList.remove("hidden");
         bindSupportOutsideClose();
         setTimeout(() => {
@@ -2563,7 +2563,7 @@ function showBrowserNotification(title, body) {
 function showSupportChatBox() {
     const box = document.getElementById("supportChatBox");
     if (box) {
-        restoreSupportChatPosition();
+        centerSupportChatBox();
         box.classList.remove("hidden");
         bindSupportOutsideClose();
         setTimeout(() => {
